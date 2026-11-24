@@ -19,6 +19,7 @@ Item {
     property var labels: ({})
     property int rowHeight
     property int iconSize
+    property int minLabelWidth
     property int maxLabelWidth
     property bool vertical
 
@@ -40,13 +41,15 @@ Item {
     readonly property bool hovered: mouse.containsMouse
 
     height: rowHeight
-    width: showLabel ? Math.min(maxLabelWidth, iconSize + Kirigami.Units.smallSpacing + Math.ceil(labelMetrics.advanceWidth) + hPad * 2)
+    width: showLabel ? Math.max(minLabelWidth, Math.min(maxLabelWidth,
+                           hPad + iconSize + content.spacing + Math.ceil(labelMetrics.advanceWidth) + hPad))
                      : rowHeight + Kirigami.Units.smallSpacing
 
     readonly property var modelIndex: tasksModel.makeModelIndex(index)
 
     // Breeze task-button background (same SVG the stock task manager uses).
     KSvg.FrameSvgItem {
+        id: frame
         anchors.fill: parent
         anchors.margins: 1
         imagePath: "widgets/tasks"
@@ -58,7 +61,10 @@ Item {
               : ["normal"]
     }
 
-    readonly property int hPad: Kirigami.Units.smallSpacing * 1.5
+    // Same padding on both sides: at least the theme's frame border, so the
+    // text never runs into the button edge.
+    readonly property int hPad: Math.max(Kirigami.Units.smallSpacing * 2,
+                                         frame.margins.left, frame.margins.right) + 1
 
     // Measure the full label text. (A Label's implicitWidth shrinks once it
     // has been elided, so it can't be used to size the button.)

@@ -5,7 +5,8 @@ import org.kde.kcmutils as KCM
 
 KCM.SimpleKCM {
     property alias cfg_rows: rowsCombo.currentIndex
-    property alias cfg_maxLabelWidth: labelWidth.value
+    property alias cfg_minButtonWidth: minWidth.value
+    property alias cfg_maxButtonWidth: maxWidth.value
     property alias cfg_showOnlyCurrentDesktop: currentDesktop.checked
 
     Kirigami.FormLayout {
@@ -16,10 +17,18 @@ KCM.SimpleKCM {
             model: ["Automatic", "1", "2", "3"]
         }
         QQC2.SpinBox {
-            id: labelWidth
-            Kirigami.FormData.label: "Maximum button width:"
-            from: 6
-            to: 40
+            id: minWidth
+            Kirigami.FormData.label: "Labelled button width, minimum:"
+            from: 40; to: 600; stepSize: 10
+            textFromValue: (v) => v + " px"
+            valueFromText: (t) => parseInt(t)
+        }
+        QQC2.SpinBox {
+            id: maxWidth
+            Kirigami.FormData.label: "maximum:"
+            from: 40; to: 800; stepSize: 10
+            textFromValue: (v) => v + " px"
+            valueFromText: (t) => parseInt(t)
         }
         QQC2.CheckBox {
             id: currentDesktop

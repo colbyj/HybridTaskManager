@@ -38,7 +38,8 @@ PlasmoidItem {
     readonly property int rowHeight: vertical ? Kirigami.Units.iconSizes.medium : Math.floor(height / rows)
     readonly property int iconSize: Math.min(Kirigami.Units.iconSizes.medium,
                                              rowHeight - Kirigami.Units.smallSpacing * 2)
-    readonly property int maxLabelWidth: Plasmoid.configuration.maxLabelWidth * Kirigami.Units.gridUnit
+    readonly property int minLabelWidth: Plasmoid.configuration.minButtonWidth
+    readonly property int maxLabelWidth: Math.max(minLabelWidth, Plasmoid.configuration.maxButtonWidth)
 
     // Sum of button lengths spread over the rows, plus the widest button as
     // slack because rows can't be packed perfectly.
@@ -208,6 +209,9 @@ PlasmoidItem {
     property bool movePending: false
     property real pendingX: 0
     Timer { id: moveSettle; interval: 120; onTriggered: root.movePending = false }
+    // Once the whole cluster has moved, keep moving the cluster for the rest
+    // of the drag instead of reordering inside it.
+    property bool clusterLocked: false
     function didMove(item) { movePending = true; pendingX = item.x; moveSettle.restart(); }
 
     function dragMoved(item, x, y, pressX) {
@@ -229,7 +233,7 @@ PlasmoidItem {
         var slack = Kirigami.Units.smallSpacing * 2;
 
         if (d > 0) {
-            if (from < own[1]) {
+            if (from < own[1] && !clusterLocked) {
                 // Reorder within the cluster: the button's right edge passes the
                 // next sibling's middle, and the cursor is over that sibling.
                 var n = from + 1;
@@ -240,10 +244,11 @@ PlasmoidItem {
                 if (it(own[1]).x + it(own[1]).width + d > spanCenter(next[0], next[1]) + slack) {
                     for (var i = 0; i <= own[1] - own[0]; i++) tasksModel.move(own[0], next[1]);
                     didMove(item);
+                    clusterLocked = true;
                 }
             }
         } else if (d < 0) {
-            if (from > own[0]) {
+            if (from > own[0] && !clusterLocked) {
                 n = from - 1;
                 if (item.x + d < spanCenter(n, n) && over(n)) { tasksModel.move(from, n); didMove(item); }
             } else if (own[0] - 1 >= 0) {
@@ -251,6 +256,7 @@ PlasmoidItem {
                 if (it(own[0]).x + d < spanCenter(prev[0], prev[1]) - slack) {
                     for (i = 0; i <= own[1] - own[0]; i++) tasksModel.move(own[0] + i, prev[0] + i);
                     didMove(item);
+                    clusterLocked = true;
                 }
             }
         }
@@ -274,6 +280,7 @@ PlasmoidItem {
     }
 
     function dragFinished() {
+        clusterLocked = false;
         tasksModel.syncLaunchers();   // persist pinned-launcher order
     }
 
@@ -449,6 +456,7 @@ PlasmoidItem {
                 tasksModel: root.tasks
                 rowHeight: root.rowHeight
                 iconSize: root.iconSize
+                minLabelWidth: root.minLabelWidth
                 maxLabelWidth: root.maxLabelWidth
                 vertical: root.vertical
                 labels: root.labels

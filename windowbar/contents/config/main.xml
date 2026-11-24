@@ -8,7 +8,8 @@
     <entry name="groupingAppIdBlacklist" type="StringList"><default></default></entry>
     <entry name="groupingLauncherUrlBlacklist" type="StringList"><default></default></entry>
     <entry name="rows" type="Int"><default>0</default></entry>
-    <entry name="maxLabelWidth" type="Int"><default>14</default></entry>
+    <entry name="minButtonWidth" type="Int"><default>100</default></entry>
+    <entry name="maxButtonWidth" type="Int"><default>260</default></entry>
     <entry name="showOnlyCurrentDesktop" type="Bool"><default>true</default></entry>
   </group>
 </kcfg>
