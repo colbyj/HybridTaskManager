@@ -279,14 +279,34 @@ PlasmoidItem {
         var geo = tasksModel.data(idx, R.ScreenGeometry);
         var mine = Plasmoid.containment.screenGeometry;
         var elsewhere = !geo || !mine || geo.x !== mine.x || geo.y !== mine.y;
-        if (mode === 2 || (mode === 1 && elsewhere)) {
-            highlightWindows(tasksModel.data(idx, R.WinIdList) || []);
-            flashTimer.restart();
-        } else {
-            highlightWindows([]);
+        if (mode === 2 || (mode === 1 && elsewhere)) flash(tasksModel.data(idx, R.WinIdList) || []);
+        else highlightWindows([]);
+    }
+
+    // A pulse rather than a steady highlight: hovering already highlights the
+    // window, so only a change in brightness catches the eye. Off, then the
+    // rest of the screen dims twice around the window.
+    property var flashIds: []
+    property int flashStep: 0
+    readonly property var flashPattern: [120, 250, 150, 250]   // ms: off, on, off, on, then off
+    function flash(ids) {
+        flashIds = ids.map(String);
+        flashStep = 0;
+        highlightWindows([]);
+        flashTimer.interval = flashPattern[0];
+        flashTimer.restart();
+    }
+    Timer {
+        id: flashTimer
+        onTriggered: {
+            root.flashStep++;
+            root.highlightWindows(root.flashStep % 2 === 1 ? root.flashIds : []);
+            if (root.flashStep < root.flashPattern.length) {
+                interval = root.flashPattern[root.flashStep];
+                restart();
+            }
         }
     }
-    Timer { id: flashTimer; interval: 700; onTriggered: root.highlightWindows([]) }
 
     // ---- running helper commands ---------------------------------------------
     readonly property string codeDir: Qt.resolvedUrl("../code/").toString().replace(/^file:\/\//, "")
