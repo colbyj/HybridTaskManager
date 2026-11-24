@@ -69,7 +69,6 @@ kpackagetool6 -t Plasma/Applet -r local.hybridtasks
   - `contents/ui/` — QML (`main.qml` is the entry point; `Task.qml` is one button)
   - `contents/code/` — title-label logic (`labels.js`) and Python helpers
     (`kwin.py` moves windows between monitors, `badges.py` relays app badges)
-- `tabtasks/` — an earlier prototype that lists Konsole/Dolphin tabs, kept for reference
 
 ## License
 
