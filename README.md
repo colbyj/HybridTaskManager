@@ -33,7 +33,8 @@ There's nothing to build: it's a QML/JavaScript widget plus small Python helpers
 ## Install
 
 ```sh
-git clone <this repo> && cd <repo>
+git clone https://github.com/colbyj/HybridTaskManager.git
+cd HybridTaskManager
 kpackagetool6 -t Plasma/Applet -i hybridtasks
 ```
 
@@ -48,9 +49,12 @@ existing task manager).
 - **Settings:** right-click the task manager → **Configure Hybrid Task Manager…**
   (rows, button widths, labels, collapsing minimized windows, the focus outline).
 
-## Update after changing the code
+## Update
+
+From the cloned folder (skip `git pull` if you're testing your own edits):
 
 ```sh
+git pull
 kpackagetool6 -t Plasma/Applet -u hybridtasks
 systemctl --user restart plasma-plasmashell   # widgets already on a panel only reload on restart
 ```
@@ -69,6 +73,15 @@ kpackagetool6 -t Plasma/Applet -r local.hybridtasks
   - `contents/ui/` — QML (`main.qml` is the entry point; `Task.qml` is one button)
   - `contents/code/` — title-label logic (`labels.js`) and Python helpers
     (`kwin.py` moves windows between monitors, `badges.py` relays app badges)
+  - `contents/config/` — settings schema (`main.xml`) and the settings page entry
+  - `metadata.json` — widget ID (`local.hybridtasks`), name and version
+
+## Issues
+
+Bug reports and suggestions are welcome on the
+[issue tracker](https://github.com/colbyj/HybridTaskManager/issues). It helps to
+include your Plasma version, X11 or Wayland, and — for label problems — the
+full window title and what you expected the button to say.
 
 ## License
 

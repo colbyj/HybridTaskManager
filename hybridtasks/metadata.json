@@ -8,6 +8,8 @@
         "Category": "Windows and Tasks",
         "Version": "0.1",
         "License": "GPL-2.0-or-later",
+        "Website": "https://github.com/colbyj/HybridTaskManager",
+        "BugReportUrl": "https://github.com/colbyj/HybridTaskManager/issues",
         "Authors": [
             {
                 "Name": "Colby Johanson"
