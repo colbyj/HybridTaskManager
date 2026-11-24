@@ -182,6 +182,7 @@ PlasmoidItem {
     // Pick up config changes made from outside (e.g. scripting, other instances).
     Connections {
         target: Plasmoid.configuration
+        function onShowLabelsChanged() { root.computeLabels(); }
         function onLaunchersChanged() {
             if (String(tasksModel.launcherList) !== String(Plasmoid.configuration.launchers))
                 tasksModel.launcherList = Plasmoid.configuration.launchers;
@@ -213,6 +214,7 @@ PlasmoidItem {
 
     function computeLabels() {
         var R = TaskManager.AbstractTasksModel;
+        if (!Plasmoid.configuration.showLabels) { labels = {}; layoutTimer.restart(); return; }
         var byApp = {};
         for (var row = 0; row < tasksModel.count; row++) {
             var idx = tasksModel.makeModelIndex(row);

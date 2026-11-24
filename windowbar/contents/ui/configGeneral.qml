@@ -8,10 +8,16 @@ KCM.SimpleKCM {
     property alias cfg_minButtonWidth: minWidth.value
     property alias cfg_maxButtonWidth: maxWidth.value
     property alias cfg_showOnlyCurrentDesktop: currentDesktop.checked
+    property alias cfg_showLabels: showLabels.checked
     property alias cfg_focusFlash: flashCombo.currentIndex
     property alias cfg_collapseMinimized: collapseCombo.currentIndex
 
     Kirigami.FormLayout {
+        QQC2.CheckBox {
+            id: showLabels
+            Kirigami.FormData.label: "Ungrouped apps:"
+            text: "Show window titles on buttons"
+        }
         QQC2.ComboBox {
             id: rowsCombo
             Kirigami.FormData.label: "Rows:"
