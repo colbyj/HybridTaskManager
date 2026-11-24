@@ -52,7 +52,7 @@ KCM.SimpleKCM {
         }
         QQC2.ComboBox {
             id: flashCombo
-            Kirigami.FormData.label: "Flash window when focused:"
+            Kirigami.FormData.label: "Outline window when focused:"
             model: ["Never", "When it's on another monitor", "Always"]
         }
         QQC2.CheckBox {

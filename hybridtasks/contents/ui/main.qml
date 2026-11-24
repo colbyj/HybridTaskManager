@@ -266,7 +266,7 @@ PlasmoidItem {
     // ---- activating windows -----------------------------------------------------
     // Clicking a window on the bar focuses it (or minimizes it if it's already
     // focused). On another monitor a focus change is easy to miss, so briefly
-    // highlight the window -- everything else dims for a moment.
+    // draw an outline around the window -- nothing else on screen changes.
     function activateIndex(idx, toggleIfActive) {
         var R = TaskManager.AbstractTasksModel;
         if (toggleIfActive && tasksModel.data(idx, R.IsActive) && !tasksModel.data(idx, R.IsMinimized)) {
@@ -279,31 +279,52 @@ PlasmoidItem {
         var geo = tasksModel.data(idx, R.ScreenGeometry);
         var mine = Plasmoid.containment.screenGeometry;
         var elsewhere = !geo || !mine || geo.x !== mine.x || geo.y !== mine.y;
-        if (mode === 2 || (mode === 1 && elsewhere)) flash(tasksModel.data(idx, R.WinIdList) || []);
-        else highlightWindows([]);
+        highlightWindows([]);   // drop the hover highlight
+        if (mode === 2 || (mode === 1 && elsewhere)) showOutline(tasksModel.data(idx, R.Geometry));
     }
 
-    // A pulse rather than a steady highlight: hovering already highlights the
-    // window, so only a change in brightness catches the eye. Off, then the
-    // rest of the screen dims twice around the window.
-    property var flashIds: []
-    property int flashStep: 0
-    readonly property var flashPattern: [120, 250, 150, 250]   // ms: off, on, off, on, then off
-    function flash(ids) {
-        flashIds = ids.map(String);
-        flashStep = 0;
-        highlightWindows([]);
-        flashTimer.interval = flashPattern[0];
-        flashTimer.restart();
+    // The outline is a frameless, click-through Plasma dialog placed at the
+    // window's global position (the shell may position its own dialogs), with
+    // a rounded accent frame that fades in and out and then removes itself.
+    function showOutline(windowGeo) {
+        if (!windowGeo || windowGeo.width <= 0) return;
+        var d = outlineComponent.createObject(root, {
+            target: Qt.rect(windowGeo.x, windowGeo.y, windowGeo.width, windowGeo.height)
+        });
+        d.visible = true;
     }
-    Timer {
-        id: flashTimer
-        onTriggered: {
-            root.flashStep++;
-            root.highlightWindows(root.flashStep % 2 === 1 ? root.flashIds : []);
-            if (root.flashStep < root.flashPattern.length) {
-                interval = root.flashPattern[root.flashStep];
-                restart();
+    Component {
+        id: outlineComponent
+        PlasmaCore.Dialog {
+            id: overlay
+            property rect target
+            x: target.x
+            y: target.y
+            type: PlasmaCore.Dialog.OnScreenDisplay
+            location: PlasmaCore.Types.Floating
+            backgroundHints: PlasmaCore.Dialog.NoBackground
+            outputOnly: true
+            flags: Qt.WindowStaysOnTopHint | Qt.WindowDoesNotAcceptFocus | Qt.WindowTransparentForInput
+
+            mainItem: Item {
+                width: overlay.target.width
+                height: overlay.target.height
+                Rectangle {
+                    id: frame
+                    anchors.fill: parent
+                    color: "transparent"
+                    radius: Kirigami.Units.cornerRadius * 2
+                    border.width: 4
+                    border.color: Kirigami.Theme.highlightColor
+                    opacity: 0
+                    SequentialAnimation {
+                        running: overlay.visible
+                        NumberAnimation { target: frame; property: "opacity"; to: 1; duration: 90 }
+                        PauseAnimation { duration: 280 }
+                        NumberAnimation { target: frame; property: "opacity"; to: 0; duration: 380; easing.type: Easing.InQuad }
+                        ScriptAction { script: { overlay.visible = false; overlay.destroy(); } }
+                    }
+                }
             }
         }
     }
