@@ -1,4 +1,9 @@
 #!/usr/bin/env python3
+# SPDX-FileCopyrightText: 2026 Colby Johanson
+# The bridge idea (re-emitting Unity launcher signals from a fixed name)
+# follows Fancy Tasks NG's unity_bridge.py by Vitaliy Elin:
+# https://github.com/daydve/FancyTasksNG
+# SPDX-License-Identifier: GPL-2.0-or-later
 """Badge/progress bridge for Window Bar.
 
 Apps report unread counts and progress with the Unity launcher API: a

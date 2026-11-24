@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-FileCopyrightText: 2026 Colby Johanson
+# SPDX-License-Identifier: GPL-2.0-or-later
 """Helper for the Tab Tasks widget.
 
   tabinfo.py list                         -> JSON of Konsole windows/tabs and Dolphin windows

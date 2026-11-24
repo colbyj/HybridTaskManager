@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-FileCopyrightText: 2026 Colby Johanson
+# SPDX-License-Identifier: GPL-2.0-or-later
 """Run small one-off KWin scripts for Window Bar.
 
   kwin.py to-screen OUTPUT_NAME WINDOW_UUID [WINDOW_UUID...]

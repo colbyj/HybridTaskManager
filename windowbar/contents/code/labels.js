@@ -1,5 +1,8 @@
 .pragma library
 
+// SPDX-FileCopyrightText: 2026 Colby Johanson
+// SPDX-License-Identifier: GPL-2.0-or-later
+
 // Window-title -> short label logic.
 //
 // Goal: for windows of the same app, show only the part of the title that

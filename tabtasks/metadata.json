@@ -7,7 +7,12 @@
         "Icon": "view-list-tree",
         "Category": "Windows and Tasks",
         "Version": "0.1",
-        "License": "GPL-2.0-or-later"
+        "License": "GPL-2.0-or-later",
+        "Authors": [
+            {
+                "Name": "Colby Johanson"
+            }
+        ]
     },
     "X-Plasma-API-Minimum-Version": "6.0"
 }
