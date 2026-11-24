@@ -40,6 +40,8 @@ Item {
     // Extras from main.qml.
     property var audio: null            // { playing, muted } or null
     property var badge: null            // { count, progress } or null
+    property var notification: null     // { count, titles } of unseen notifications, or null
+    readonly property int notificationCount: notification ? notification.count : 0
     readonly property bool showAudio: !!audio && (audio.playing || audio.muted)
     readonly property int badgeCount: badge ? badge.count : 0
     readonly property real progress: badge ? badge.progress : -1
@@ -184,6 +186,41 @@ Item {
             }
         }
 
+        // Unseen desktop notifications: bell (+ count). Apps that send their own
+        // unread count already show it above, so they don't get a bell too.
+        Rectangle {
+            visible: task.notificationCount > 0 && task.badgeCount === 0
+            z: 2
+            anchors.right: parent.right
+            anchors.top: parent.top
+            anchors.margins: 1
+            height: Math.max(12, Math.round(task.rowHeight * 0.42))
+            width: bellRow.implicitWidth + height * 0.4
+            radius: height / 2
+            color: Kirigami.Theme.neutralTextColor
+            Row {
+                id: bellRow
+                anchors.centerIn: parent
+                spacing: 1
+                Kirigami.Icon {
+                    width: parent.parent.height * 0.75
+                    height: width
+                    anchors.verticalCenter: parent.verticalCenter
+                    source: "notifications-symbolic"
+                    color: "white"
+                    isMask: true
+                }
+                PC3.Label {
+                    visible: task.notificationCount > 1
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: task.notificationCount > 99 ? "99+" : task.notificationCount
+                    color: "white"
+                    font.pixelSize: parent.parent.height * 0.72
+                    font.bold: true
+                }
+            }
+        }
+
         // Progress (downloads, copies, builds...).
         Rectangle {
             visible: task.progress >= 0
@@ -237,9 +274,13 @@ Item {
             mainText: task.isLauncher ? (task.model.AppName || task.model.display)
                     : task.isGroup ? task.model.AppName
                     : Labels.cleanTitle(task.model.display, task.model.AppName)
-            subText: task.isLauncher ? "Not running"
-                   : task.isGroup ? task.model.ChildCount + " windows"
-                   : task.model.AppName
+            subText: (task.isLauncher ? "Not running"
+                      : task.isGroup ? task.model.ChildCount + " windows"
+                      : task.model.AppName)
+                     + (task.notificationCount
+                        ? "\n\n" + (task.notificationCount === 1 ? "1 new notification" : task.notificationCount + " new notifications")
+                          + task.notification.titles.map(t => "\n• " + t).join("")
+                        : "")
             location: PlasmaCore.Types.Floating
         }
 

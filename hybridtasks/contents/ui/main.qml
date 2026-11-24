@@ -22,6 +22,7 @@ import org.kde.ksvg as KSvg
 import org.kde.plasma.plasma5support as P5Support
 import org.kde.plasma.workspace.dbus as DBus
 import org.kde.plasma.private.volume as PlasmaPa
+import org.kde.notificationmanager as NotificationManager
 import org.kde.kirigami as Kirigami
 import org.kde.taskmanager as TaskManager
 
@@ -188,8 +189,8 @@ PlasmoidItem {
         onGroupingAppIdBlacklistChanged: if (root.loaded) Plasmoid.configuration.groupingAppIdBlacklist = groupingAppIdBlacklist
         onGroupingLauncherUrlBlacklistChanged: if (root.loaded) Plasmoid.configuration.groupingLauncherUrlBlacklist = groupingLauncherUrlBlacklist
 
-        onCountChanged: { labelTimer.restart(); adjacencyTimer.restart(); layoutTimer.restart(); }
-        onDataChanged: { labelTimer.restart(); layoutTimer.restart(); }
+        onCountChanged: { labelTimer.restart(); adjacencyTimer.restart(); layoutTimer.restart(); notifTimer.restart(); }
+        onDataChanged: { labelTimer.restart(); layoutTimer.restart(); notifTimer.restart(); }
     }
 
     // Pick up config changes made from outside (e.g. scripting, other instances).
@@ -514,6 +515,73 @@ PlasmoidItem {
         function dbusUpdate(appUri, count, progress) { root.updateBadge(appUri, count, progress); }
     }
 
+    // ---- desktop notifications -------------------------------------------------------
+    // An app "has unseen notifications" when its notifications in Plasma's
+    // history are newer than both the tray's last-read time (opening the tray's
+    // notification list clears them, like Plasma's bell) and the last time one
+    // of the app's windows was focused. Low-urgency and transient ones are ignored.
+    property var notifications: ({})   // desktop id -> { count, titles }
+    property var seenAt: ({})          // desktop id -> ms; app was focused at/after this
+    Timer { id: notifTimer; interval: 100; onTriggered: root.rebuildNotifications() }
+
+    NotificationManager.Notifications {
+        id: notifModel
+        showNotifications: true
+        showJobs: false
+        showExpired: true
+        showDismissed: true
+        urgencies: NotificationManager.Notifications.NormalUrgency | NotificationManager.Notifications.CriticalUrgency
+        groupMode: NotificationManager.Notifications.GroupDisabled
+        onCountChanged: notifTimer.restart()
+        onDataChanged: notifTimer.restart()
+        onLastReadChanged: notifTimer.restart()
+    }
+
+    function rebuildNotifications() {
+        var R = TaskManager.AbstractTasksModel;
+        var N = NotificationManager.Notifications;
+        var now = Date.now();
+        var seen = Object.assign({}, seenAt);
+        // Last focus time per app, from every window (including grouped ones).
+        function noteWindow(idx) {
+            var keys = [desktopId(tasksModel.data(idx, R.LauncherUrlWithoutIcon)), desktopId(tasksModel.data(idx, R.AppId))];
+            var t = tasksModel.data(idx, R.IsActive) ? now : new Date(tasksModel.data(idx, R.LastActivated) || 0).getTime();
+            keys.forEach(k => { if (k) seen[k] = Math.max(seen[k] || 0, t || 0); });
+        }
+        for (var r = 0; r < tasksModel.count; r++) {
+            var idx = tasksModel.makeModelIndex(r);
+            if (tasksModel.data(idx, R.IsGroupParent)) {
+                for (var c = 0; c < tasksModel.rowCount(idx); c++) noteWindow(tasksModel.makeModelIndex(r, c));
+            } else if (tasksModel.data(idx, R.IsWindow)) {
+                noteWindow(idx);
+            }
+        }
+        seenAt = seen;
+
+        var lastRead = notifModel.lastRead ? new Date(notifModel.lastRead).getTime() || 0 : 0;
+        var out = {};
+        for (var i = 0; i < notifModel.count; i++) {
+            var ni = notifModel.index(i, 0);
+            if (notifModel.data(ni, N.TypeRole) !== N.NotificationType) continue;
+            if (notifModel.data(ni, N.ReadRole) || notifModel.data(ni, N.TransientRole)) continue;
+            var app = desktopId(notifModel.data(ni, N.DesktopEntryRole) || notifModel.data(ni, N.ApplicationNameRole));
+            if (!app) continue;
+            var when = Math.max(new Date(notifModel.data(ni, N.CreatedRole) || 0).getTime() || 0,
+                                new Date(notifModel.data(ni, N.UpdatedRole) || 0).getTime() || 0);
+            if (when <= lastRead || when <= (seen[app] || 0)) continue;
+            var e = out[app] || (out[app] = { count: 0, titles: [], newest: 0 });
+            e.count++;
+            e.titles.push({ when: when, text: notifModel.data(ni, N.SummaryRole) || "" });
+        }
+        for (var a in out) {
+            out[a].titles = out[a].titles.sort((x, y) => y.when - x.when).slice(0, 3).map(t => t.text);
+        }
+        notifications = out;
+    }
+    function notificationsFor(launcherUrl, appId) {
+        return notifications[desktopId(launcherUrl)] || notifications[desktopId(appId)] || null;
+    }
+
     // ---- KWin window highlight ------------------------------------------------
     function highlightWindows(ids) {
         DBus.SessionBus.asyncCall({
@@ -733,6 +801,7 @@ PlasmoidItem {
                 onStubRequested: (rows, item) => root.openStub(rows, item)
                 audio: root.audioFor(model.AppPid, model.AppId)
                 badge: root.badgeFor(model.LauncherUrlWithoutIcon, model.AppId)
+                notification: root.notificationsFor(model.LauncherUrlWithoutIcon, model.AppId)
                 onMuteToggled: root.toggleMute(model.AppPid, model.AppId)
                 onGroupMenuRequested: (row, item) => root.openGroupMenu(row, item)
                 onContextMenuRequested: (row, item) => root.openContextMenu(row, item)
