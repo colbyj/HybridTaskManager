@@ -8,6 +8,7 @@ import org.kde.plasma.components as PC3
 import org.kde.ksvg as KSvg
 import org.kde.plasma.plasma5support as P5Support
 import org.kde.plasma.workspace.dbus as DBus
+import org.kde.plasma.private.volume as PlasmaPa
 import org.kde.kirigami as Kirigami
 import org.kde.taskmanager as TaskManager
 
@@ -409,6 +410,95 @@ PlasmoidItem {
         tasksModel.syncLaunchers();   // persist pinned-launcher order
     }
 
+    // ---- audio --------------------------------------------------------------------
+    // PulseAudio/PipeWire streams, matched to windows by process id (or by
+    // name as a fallback). All windows of a process share its streams.
+    property var audioByPid: ({})
+    property var audioByName: ({})
+    Timer { id: audioTimer; interval: 50; onTriggered: root.rebuildAudio() }
+
+    Instantiator {
+        id: audioStreams
+        model: PlasmaPa.PulseObjectFilterModel {
+            filters: [ { role: "VirtualStream", value: false } ]
+            sourceModel: PlasmaPa.SinkInputModel {}
+        }
+        delegate: QtObject {
+            required property var model
+            readonly property int pid: parseInt(model.Client?.properties["application.process.id"] ?? "0")
+            readonly property string binary: model.Client?.properties["application.process.binary"] ?? ""
+            readonly property string appName: model.Client?.properties["application.name"] ?? ""
+            readonly property bool muted: !!model.Muted
+            readonly property bool corked: !!model.Corked
+            onMutedChanged: audioTimer.restart()
+            onCorkedChanged: audioTimer.restart()
+            function setMuted(m) { model.Muted = m; }
+        }
+        onObjectAdded: audioTimer.restart()
+        onObjectRemoved: audioTimer.restart()
+    }
+
+    function rebuildAudio() {
+        var byPid = {}, byName = {};
+        function add(map, key, s) {
+            if (!key) return;
+            var e = map[key] || (map[key] = { playing: false, muted: true, streams: [] });
+            e.playing = e.playing || !s.corked;
+            e.muted = e.muted && s.muted;
+            e.streams.push(s);
+        }
+        for (var i = 0; i < audioStreams.count; i++) {
+            var s = audioStreams.objectAt(i);
+            if (!s || s.binary === "plasmashell") continue;   // notification sounds
+            add(byPid, s.pid, s);
+            add(byName, s.binary.toLowerCase(), s);
+            add(byName, s.appName.toLowerCase(), s);
+        }
+        audioByPid = byPid;
+        audioByName = byName;
+    }
+    function audioFor(pid, appId) {
+        if (pid && audioByPid[pid]) return audioByPid[pid];
+        var id = String(appId || "").toLowerCase();
+        return audioByName[id] || audioByName[id.split(".").pop()] || audioByName[id.split("_")[0]] || null;
+    }
+    function toggleMute(pid, appId) {
+        var a = audioFor(pid, appId);
+        if (!a) return;
+        var mute = !a.muted;
+        a.streams.forEach(s => s.setMuted(mute));
+    }
+
+    // ---- badges and progress (Unity launcher API) -------------------------------------
+    // Apps broadcast com.canonical.Unity.LauncherEntry.Update(app_uri, props);
+    // badges.py turns that into (app_uri, count or 0, progress or -1).
+    property var badges: ({})
+    function desktopId(s) {
+        return String(s || "").replace(/^application:\/\//, "").replace(/^applications:/, "")
+                              .replace(/\.desktop$/, "").toLowerCase();
+    }
+    function updateBadge(appUri, count, progress) {
+        var next = Object.assign({}, badges);
+        next[desktopId(appUri)] = { count: count, progress: progress };
+        badges = next;
+    }
+    function badgeFor(launcherUrl, appId) {
+        return badges[desktopId(launcherUrl)] || badges[desktopId(appId)] || null;
+    }
+    // code/badges.py listens for the Unity signal from any app and re-emits it
+    // from a fixed name we can watch. It's started here and exits with plasmashell.
+    P5Support.DataSource {
+        id: badgeBridge
+        engine: "executable"
+        Component.onCompleted: connectSource("exec python3 -I " + root.shq(root.codeDir + "badges.py"))
+    }
+    DBus.SignalWatcher {
+        service: "local.windowbar.Badges"
+        path: "/Badges"
+        iface: "local.windowbar.Badges"
+        function dbusUpdate(appUri, count, progress) { root.updateBadge(appUri, count, progress); }
+    }
+
     // ---- KWin window highlight ------------------------------------------------
     function highlightWindows(ids) {
         DBus.SessionBus.asyncCall({
@@ -626,6 +716,9 @@ PlasmoidItem {
                 overflowHidden: root.overflowRows.indexOf(index) !== -1
                 onActivateRequested: row => root.activateIndex(root.tasks.makeModelIndex(row), true)
                 onStubRequested: (rows, item) => root.openStub(rows, item)
+                audio: root.audioFor(model.AppPid, model.AppId)
+                badge: root.badgeFor(model.LauncherUrlWithoutIcon, model.AppId)
+                onMuteToggled: root.toggleMute(model.AppPid, model.AppId)
                 onGroupMenuRequested: (row, item) => root.openGroupMenu(row, item)
                 onContextMenuRequested: (row, item) => root.openContextMenu(row, item)
                 onHighlightRequested: ids => root.highlightWindows(ids)

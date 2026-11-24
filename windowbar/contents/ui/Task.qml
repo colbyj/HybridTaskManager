@@ -31,6 +31,13 @@ Item {
     property bool overflowHidden: false // moved into the "+N" list
     property var stubRows: []           // minimized windows collapsed after this slot
 
+    // Extras from main.qml.
+    property var audio: null            // { playing, muted } or null
+    property var badge: null            // { count, progress } or null
+    readonly property bool showAudio: !!audio && (audio.playing || audio.muted)
+    readonly property int badgeCount: badge ? badge.count : 0
+    readonly property real progress: badge ? badge.progress : -1
+
     signal activateRequested(int row)
     signal groupMenuRequested(int row, Item item)
     signal stubRequested(var rows, Item item)
@@ -39,6 +46,7 @@ Item {
     signal newInstanceRequested(int row)
     signal dragMoved(Item item, real x, real y, real pressX)
     signal dragFinished()
+    signal muteToggled()
 
     property bool dragging: false
 
@@ -56,10 +64,12 @@ Item {
     readonly property int iconOnlyWidth: rowHeight + Kirigami.Units.smallSpacing
     readonly property int naturalWidth: showLabel
         ? Math.max(minLabelWidth, Math.min(maxLabelWidth,
-                   hPad + iconSize + content.spacing + Math.ceil(labelMetrics.advanceWidth) + hPad))
+                   hPad + iconSize + content.spacing + Math.ceil(labelMetrics.advanceWidth)
+                   + (showAudio ? content.spacing + audioSize : 0) + hPad))
         : iconOnlyWidth
     readonly property int compactWidth: showLabel ? Math.min(naturalWidth, minLabelWidth) : iconOnlyWidth
     readonly property int stubWidth: iconOnlyWidth
+    readonly property int audioSize: Math.max(12, Math.round(iconSize * 0.6))
 
     readonly property int ownWidth: ownHidden ? 0 : Math.max(compactWidth, Math.min(naturalWidth, labelCap))
     width: overflowHidden ? 0 : ownWidth + (stubRows.length ? stubWidth : 0)
@@ -123,6 +133,84 @@ Item {
                 elide: /^\S*\/\S*$/.test(task.shortLabel) ? Text.ElideLeft : Text.ElideRight
                 maximumLineCount: 1
                 opacity: task.model.IsMinimized ? 0.7 : 1
+            }
+            AudioIcon {
+                visible: task.showLabel && task.showAudio
+                muted: !!task.audio && task.audio.muted
+                Layout.preferredWidth: task.audioSize
+                Layout.preferredHeight: task.audioSize
+                Layout.alignment: Qt.AlignVCenter
+                onToggled: task.muteToggled()
+            }
+        }
+
+        // Icon-only buttons: audio indicator in the top-left corner.
+        AudioIcon {
+            visible: !task.showLabel && task.showAudio
+            muted: !!task.audio && task.audio.muted
+            width: task.audioSize * 0.8
+            height: width
+            anchors.left: parent.left
+            anchors.top: parent.top
+            anchors.margins: 2
+            z: 2
+            onToggled: task.muteToggled()
+        }
+
+        // Unread count (Unity launcher API: Slack, Thunderbird, ...).
+        Rectangle {
+            visible: task.badgeCount > 0
+            z: 2
+            anchors.right: parent.right
+            anchors.top: parent.top
+            anchors.margins: 1
+            height: Math.max(12, Math.round(task.rowHeight * 0.42))
+            width: Math.max(height, badgeText.implicitWidth + height * 0.5)
+            radius: height / 2
+            color: Kirigami.Theme.highlightColor
+            PC3.Label {
+                id: badgeText
+                anchors.centerIn: parent
+                text: task.badgeCount > 99 ? "99+" : task.badgeCount
+                color: Kirigami.Theme.highlightedTextColor
+                font.pixelSize: parent.height * 0.72
+                font.bold: true
+            }
+        }
+
+        // Progress (downloads, copies, builds...).
+        Rectangle {
+            visible: task.progress >= 0
+            z: 2
+            anchors.left: parent.left
+            anchors.bottom: parent.bottom
+            anchors.leftMargin: task.hPad
+            anchors.bottomMargin: 2
+            height: 3
+            radius: 1.5
+            width: Math.max(0, (parent.width - task.hPad * 2) * Math.min(1, task.progress))
+            color: Kirigami.Theme.highlightColor
+        }
+
+        // Dropping files: hold over a button to bring its window forward,
+        // drop to open the files with that app.
+        DropArea {
+            anchors.fill: parent
+            onEntered: (drag) => { if (drag.hasUrls) dragRaiseTimer.restart(); }
+            onExited: dragRaiseTimer.stop()
+            onDropped: (drop) => {
+                dragRaiseTimer.stop();
+                if (!drop.hasUrls) return;
+                task.tasksModel.requestOpenUrls(task.modelIndex, drop.urls);
+                drop.accept();
+            }
+            Timer {
+                id: dragRaiseTimer
+                interval: 600
+                onTriggered: {
+                    if (task.isGroup) task.groupMenuRequested(task.index, own);
+                    else if (!task.isLauncher) task.tasksModel.requestActivate(task.modelIndex);
+                }
             }
         }
 
