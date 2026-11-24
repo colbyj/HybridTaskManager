@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # SPDX-FileCopyrightText: 2026 Colby Johanson
 # SPDX-License-Identifier: GPL-2.0-or-later
-"""Run small one-off KWin scripts for Window Bar.
+"""Run small one-off KWin scripts for Hybrid Task Manager.
 
   kwin.py to-screen OUTPUT_NAME WINDOW_UUID [WINDOW_UUID...]
   kwin.py find WINDOW_UUID            (dry run: logs the match to KWin's journal)
@@ -24,7 +24,7 @@ const dryRun = %(dry)s;
 const out = workspace.screens.find(s => s.name === outputName);
 for (const w of workspace.windowList()) {
     if (!wanted.includes(w.internalId.toString())) continue;
-    if (dryRun) { print("windowbar: found", w.caption, "on", w.output.name); continue; }
+    if (dryRun) { print("hybridtasks: found", w.caption, "on", w.output.name); continue; }
     if (out) workspace.sendClientToScreen(w, out);
 }
 """
@@ -32,10 +32,10 @@ for (const w of workspace.windowList()) {
 
 def run(ids, output, dry):
     src = SCRIPT % {"ids": json.dumps(ids), "output": json.dumps(output), "dry": "true" if dry else "false"}
-    fd, path = tempfile.mkstemp(prefix="windowbar-", suffix=".js")
+    fd, path = tempfile.mkstemp(prefix="hybridtasks-", suffix=".js")
     with os.fdopen(fd, "w") as f:
         f.write(src)
-    name = "windowbar-oneoff-%d" % os.getpid()
+    name = "hybridtasks-oneoff-%d" % os.getpid()
     bus = dbus.SessionBus()
     scripting = dbus.Interface(bus.get_object("org.kde.KWin", "/Scripting"), "org.kde.kwin.Scripting")
     try:

@@ -4,7 +4,7 @@
 # follows Fancy Tasks NG's unity_bridge.py by Vitaliy Elin:
 # https://github.com/daydve/FancyTasksNG
 # SPDX-License-Identifier: GPL-2.0-or-later
-"""Badge/progress bridge for Window Bar.
+"""Badge/progress bridge for Hybrid Task Manager.
 
 Apps report unread counts and progress with the Unity launcher API: a
 com.canonical.Unity.LauncherEntry.Update(app_uri, props) signal sent from any
@@ -12,11 +12,11 @@ object path. Plasma's QML D-Bus watcher can't subscribe to "any sender, any
 path", so this process does, keeps the latest state per app (apps send only
 what changed), and re-emits the full state from a fixed name:
 
-    service local.windowbar.Badges, path /Badges,
-    signal  local.windowbar.Badges.Update(s app_uri, i count, d progress)
+    service local.hybridtasks.Badges, path /Badges,
+    signal  local.hybridtasks.Badges.Update(s app_uri, i count, d progress)
 
 count is 0 when hidden; progress is -1 when hidden. One instance is enough for
-all Window Bar widgets; extra instances exit. It exits with plasmashell.
+all Hybrid Task Manager widgets; extra instances exit. It exits with plasmashell.
 """
 import ctypes
 import signal
@@ -27,7 +27,7 @@ import dbus.service
 from dbus.mainloop.glib import DBusGMainLoop
 from gi.repository import GLib
 
-NAME = "local.windowbar.Badges"
+NAME = "local.hybridtasks.Badges"
 
 
 def die_with_parent():
@@ -65,7 +65,7 @@ def main():
     try:
         bridge = Bridge(bus)
     except dbus.exceptions.NameExistsException:
-        return  # another Window Bar already runs the bridge
+        return  # another Hybrid Task Manager already runs the bridge
     bus.add_signal_receiver(bridge.on_launcher_entry, signal_name="Update",
                             dbus_interface="com.canonical.Unity.LauncherEntry")
     GLib.MainLoop().run()

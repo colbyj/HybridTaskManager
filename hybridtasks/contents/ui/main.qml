@@ -508,9 +508,9 @@ PlasmoidItem {
         Component.onCompleted: connectSource("exec python3 -I " + root.shq(root.codeDir + "badges.py"))
     }
     DBus.SignalWatcher {
-        service: "local.windowbar.Badges"
+        service: "local.hybridtasks.Badges"
         path: "/Badges"
-        iface: "local.windowbar.Badges"
+        iface: "local.hybridtasks.Badges"
         function dbusUpdate(appUri, count, progress) { root.updateBadge(appUri, count, progress); }
     }
 
@@ -641,7 +641,7 @@ PlasmoidItem {
                 () => tasksModel.requestToggleGrouping(idx));
         }
         if (url) {
-            add({ text: pinned ? "Unpin from Window Bar" : "Pin to Window Bar", icon: pinned ? "window-unpin" : "window-pin" },
+            add({ text: pinned ? "Unpin from Task Manager" : "Pin to Task Manager", icon: pinned ? "window-unpin" : "window-pin" },
                 () => pinned ? tasksModel.requestRemoveLauncher(url) : tasksModel.requestAddLauncher(url));
         }
         if (!isLauncher) {
