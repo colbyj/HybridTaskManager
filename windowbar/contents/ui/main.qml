@@ -203,32 +203,76 @@ PlasmoidItem {
         while (e + 1 < keys.length && keys[e + 1] === keys[i]) e++;
         return [s, e];
     }
-    function dragMoved(item, x, y) {
+    // After a move, wait for the layout to catch up before deciding again;
+    // otherwise stale positions cause double moves.
+    property bool movePending: false
+    property real pendingX: 0
+    Timer { id: moveSettle; interval: 120; onTriggered: root.movePending = false }
+    function didMove(item) { movePending = true; pendingX = item.x; moveSettle.restart(); }
+
+    function dragMoved(item, x, y, pressX) {
+        if (movePending && item.x === pendingX) return;
+        movePending = false;
+        if (rows > 1 || vertical) return dragMovedGrid(item, x, y);
+
+        // d = how far the dragged button "wants" to be from where it sits.
+        var d = x - pressX;
+        var keys = [];
+        for (var r = 0; r < tasksModel.count; r++) keys.push(rowKey(r));
+        var from = item.index;
+        var own = clusterAt(keys, from);
+        var it = i => repeater.itemAt(i);
+        var spanCenter = (s, e) => (it(s).x + it(e).x + it(e).width) / 2;
+        var cursor = item.mapToItem(flow, x, y).x;
+        var over = i => cursor >= it(i).x && cursor < it(i).x + it(i).width;
+        // A little extra distance before a whole cluster jumps.
+        var slack = Kirigami.Units.smallSpacing * 2;
+
+        if (d > 0) {
+            if (from < own[1]) {
+                // Reorder within the cluster: the button's right edge passes the
+                // next sibling's middle, and the cursor is over that sibling.
+                var n = from + 1;
+                if (item.x + item.width + d > spanCenter(n, n) && over(n)) { tasksModel.move(from, n); didMove(item); }
+            } else if (own[1] + 1 < keys.length) {
+                // Move the whole cluster right past the next cluster.
+                var next = clusterAt(keys, own[1] + 1);
+                if (it(own[1]).x + it(own[1]).width + d > spanCenter(next[0], next[1]) + slack) {
+                    for (var i = 0; i <= own[1] - own[0]; i++) tasksModel.move(own[0], next[1]);
+                    didMove(item);
+                }
+            }
+        } else if (d < 0) {
+            if (from > own[0]) {
+                n = from - 1;
+                if (item.x + d < spanCenter(n, n) && over(n)) { tasksModel.move(from, n); didMove(item); }
+            } else if (own[0] - 1 >= 0) {
+                var prev = clusterAt(keys, own[0] - 1);
+                if (it(own[0]).x + d < spanCenter(prev[0], prev[1]) - slack) {
+                    for (i = 0; i <= own[1] - own[0]; i++) tasksModel.move(own[0] + i, prev[0] + i);
+                    didMove(item);
+                }
+            }
+        }
+    }
+
+    // Multi-row / vertical fallback: act on the button under the cursor.
+    function dragMovedGrid(item, x, y) {
         var p = item.mapToItem(flow, x, y);
         var target = flow.childAt(p.x, p.y);
         if (!target || target === item || target.index === undefined) return;
         var from = item.index, t = target.index;
-
-        // Hysteresis: only move once the cursor is past the target's middle,
-        // so buttons of different widths don't flip back and forth.
-        var local = target.mapFromItem(flow, p.x, p.y);
-        var sameRow = Math.abs(target.y - item.y) < 1;
-        if (sameRow && t > from && local.x < target.width / 2) return;
-        if (sameRow && t < from && local.x > target.width / 2) return;
-
         var keys = [];
         for (var r = 0; r < tasksModel.count; r++) keys.push(rowKey(r));
         var own = clusterAt(keys, from);
-        if (t >= own[0] && t <= own[1]) { tasksModel.move(from, t); return; }
-
+        if (t >= own[0] && t <= own[1]) { tasksModel.move(from, t); didMove(item); return; }
         var other = clusterAt(keys, t);
         var n = own[1] - own[0] + 1;
-        if (t < own[0]) {
-            for (var i = 0; i < n; i++) tasksModel.move(own[0] + i, other[0] + i);
-        } else {
-            for (i = 0; i < n; i++) tasksModel.move(own[0], other[1]);
-        }
+        if (t < own[0]) { for (var i = 0; i < n; i++) tasksModel.move(own[0] + i, other[0] + i); }
+        else { for (i = 0; i < n; i++) tasksModel.move(own[0], other[1]); }
+        didMove(item);
     }
+
     function dragFinished() {
         tasksModel.syncLaunchers();   // persist pinned-launcher order
     }
@@ -412,7 +456,7 @@ PlasmoidItem {
                 onContextMenuRequested: (row, item) => root.openContextMenu(row, item)
                 onHighlightRequested: ids => root.highlightWindows(ids)
                 onNewInstanceRequested: row => root.newInstance(root.tasks.makeModelIndex(row))
-                onDragMoved: (item, x, y) => root.dragMoved(item, x, y)
+                onDragMoved: (item, x, y, pressX) => root.dragMoved(item, x, y, pressX)
                 onDragFinished: root.dragFinished()
             }
         }

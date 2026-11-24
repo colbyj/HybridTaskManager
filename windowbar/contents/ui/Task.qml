@@ -26,7 +26,7 @@ Item {
     signal contextMenuRequested(int row, Item item)
     signal highlightRequested(var ids)
     signal newInstanceRequested(int row)
-    signal dragMoved(Item item, real x, real y)
+    signal dragMoved(Item item, real x, real y, real pressX)
     signal dragFinished()
 
     property bool dragging: false
@@ -132,7 +132,7 @@ Item {
             if (!(m.buttons & Qt.LeftButton)) return;
             if (!task.dragging && Math.hypot(m.x - pressPos.x, m.y - pressPos.y) < Qt.styleHints.startDragDistance) return;
             if (!task.dragging) { task.dragging = true; highlightTimer.stop(); task.highlightRequested([]); }
-            task.dragMoved(task, m.x, m.y);
+            task.dragMoved(task, m.x, m.y, pressPos.x);
         }
         onReleased: {
             if (task.dragging) { task.dragging = false; task.dragFinished(); }
