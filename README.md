@@ -17,7 +17,9 @@ Other features:
 - When the bar is full, labels shrink, minimized windows can collapse into one
   button, and anything left over goes into a "+N" list
 - A brief outline around the window you focused, if it's on another monitor
-- Right-click: move to another desktop or monitor; minimize, maximize or close all
+- Right-click: the app's own actions (e.g. Firefox's "New Private Window",
+  Konsole's "Open a New Tab", Dolphin's Places); move to another desktop or
+  monitor; minimize, maximize or close all
 - Audio indicator (click to mute), unread-count and progress badges, and a bell
   for unseen notifications
 
@@ -25,8 +27,8 @@ Other features:
 
 - KDE Plasma 6 (developed on Plasma 6.6, Wayland)
 - Python 3 with `dbus` and `gi` (on Debian/Ubuntu: `python3-dbus`, `python3-gi`;
-  both ship with Kubuntu). Used for moving windows between monitors and for
-  badges.
+  both ship with Kubuntu). Used for moving windows between monitors, for the
+  right-click menu's app actions, and for badges.
 
 There's nothing to build: it's a QML/JavaScript widget plus small Python helpers.
 

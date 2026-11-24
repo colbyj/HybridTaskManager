@@ -189,7 +189,7 @@ PlasmoidItem {
         onGroupingAppIdBlacklistChanged: if (root.loaded) Plasmoid.configuration.groupingAppIdBlacklist = groupingAppIdBlacklist
         onGroupingLauncherUrlBlacklistChanged: if (root.loaded) Plasmoid.configuration.groupingLauncherUrlBlacklist = groupingLauncherUrlBlacklist
 
-        onCountChanged: { labelTimer.restart(); adjacencyTimer.restart(); layoutTimer.restart(); notifTimer.restart(); }
+        onCountChanged: { labelTimer.restart(); adjacencyTimer.restart(); layoutTimer.restart(); notifTimer.restart(); appActionsTimer.restart(); }
         onDataChanged: { labelTimer.restart(); layoutTimer.restart(); notifTimer.restart(); }
     }
 
@@ -343,6 +343,40 @@ PlasmoidItem {
         id: exec
         engine: "executable"
         onNewData: (source) => disconnectSource(source)
+    }
+
+    // App-specific menu entries (apps.py): the .desktop file's actions, e.g.
+    // Firefox's "New Private Window", and Dolphin's places. Fetched in the
+    // background when apps appear, so the menu can show them straight away.
+    property var appActions: ({})   // launcher url -> { actions: [...], places: [...] }
+    property var appActionsPending: ({})
+    Timer { id: appActionsTimer; interval: 500; onTriggered: root.fetchAppActions() }
+    function fetchAppActions() {
+        var urls = [];
+        for (var r = 0; r < tasksModel.count; r++) {
+            var url = String(tasksModel.data(tasksModel.makeModelIndex(r), TaskManager.AbstractTasksModel.LauncherUrlWithoutIcon) || "");
+            if (url && !(url in appActions) && !(url in appActionsPending) && urls.indexOf(url) === -1) urls.push(url);
+        }
+        if (!urls.length) return;
+        urls.forEach(u => appActionsPending[u] = true);
+        appActionsSource.connectSource(["python3", "-I", codeDir + "apps.py", "actions"].concat(urls).map(shq).join(" "));
+    }
+    P5Support.DataSource {
+        id: appActionsSource
+        engine: "executable"
+        onNewData: (source, data) => {
+            disconnectSource(source);
+            var found = {};
+            try { found = JSON.parse(data.stdout); } catch (e) {
+                // Let the next change in the task list try again.
+                console.warn("hybridtasks: apps.py:", data.stderr);
+                root.appActionsPending = {};
+                return;
+            }
+            var all = Object.assign({}, root.appActions, found);
+            for (var u in found) delete root.appActionsPending[u];
+            root.appActions = all;
+        }
     }
 
     // Middle-click / "Open New Window". Dolphin restores its last session when
@@ -744,10 +778,29 @@ PlasmoidItem {
             return sub;
         }
         add({ text: d(R.AppName) || d(Qt.DisplayRole), section: true });
-        if (d(R.CanLaunchNewInstance) || isLauncher) {
+        var newWindowShown = !!d(R.CanLaunchNewInstance) || isLauncher;
+        if (newWindowShown) {
             add({ text: isLauncher ? "Start" : "Open New Window", icon: "window-new" },
                 () => isLauncher ? tasksModel.requestActivate(idx) : root.newInstance(idx));
         }
+        var extra = (url && appActions[String(url)]) || { actions: [], places: [] };
+        var menuText = s => String(s).replace(/&/g, "&&");
+        extra.actions.forEach(a => {
+            // Most apps' "New Window" action duplicates the entry above.
+            if (newWindowShown && a.id.toLowerCase().replace(/[^a-z]/g, "") === "newwindow") return;
+            const launcher = String(url), action = a.id;
+            add({ text: menuText(a.name), icon: a.icon || "" },
+                () => root.runCommand(["python3", "-I", root.codeDir + "apps.py", "run", launcher, action]));
+        });
+        if (extra.places.length) {
+            var placesMenu = addSubMenu({ text: "Places", icon: "folder" });
+            extra.places.forEach(p => {
+                const place = p.url;
+                addTo(placesMenu, { text: menuText(p.name), icon: p.icon || "folder" },
+                      () => root.runCommand(["dolphin", "--new-window", place]));
+            });
+        }
+        if (newWindowShown || extra.actions.length || extra.places.length) add({ separator: true });
         if (!isLauncher) {
             add({ text: "Allow this program to be grouped", checkable: true, checked: !!d(R.IsGroupable) },
                 () => tasksModel.requestToggleGrouping(idx));
