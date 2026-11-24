@@ -298,6 +298,7 @@ PlasmoidItem {
         PlasmaCore.Dialog {
             id: overlay
             property rect target
+            readonly property int total: Math.max(150, Plasmoid.configuration.outlineDuration)
             x: target.x
             y: target.y
             type: PlasmaCore.Dialog.OnScreenDisplay
@@ -314,14 +315,16 @@ PlasmoidItem {
                     anchors.fill: parent
                     color: "transparent"
                     radius: Kirigami.Units.cornerRadius * 2
-                    border.width: 4
-                    border.color: Kirigami.Theme.highlightColor
+                    border.width: Plasmoid.configuration.outlineWidth
+                    border.color: Plasmoid.configuration.outlineUseAccent ? Kirigami.Theme.highlightColor
+                                                                          : Plasmoid.configuration.outlineColor
                     opacity: 0
                     SequentialAnimation {
                         running: overlay.visible
-                        NumberAnimation { target: frame; property: "opacity"; to: 1; duration: 90 }
-                        PauseAnimation { duration: 280 }
-                        NumberAnimation { target: frame; property: "opacity"; to: 0; duration: 380; easing.type: Easing.InQuad }
+                        // Total time = outlineDuration: quick fade in, hold, slower fade out.
+                        NumberAnimation { target: frame; property: "opacity"; to: 1; duration: Math.round(overlay.total * 0.12) }
+                        PauseAnimation { duration: Math.round(overlay.total * 0.38) }
+                        NumberAnimation { target: frame; property: "opacity"; to: 0; duration: Math.round(overlay.total * 0.5); easing.type: Easing.InQuad }
                         ScriptAction { script: { overlay.visible = false; overlay.destroy(); } }
                     }
                 }
