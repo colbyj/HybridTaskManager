@@ -332,18 +332,39 @@ Item {
             font.pixelSize: Math.max(8, task.rowHeight * 0.32)
             font.bold: true
         }
+        // The minimized windows' ids and titles, for hover.
+        function stubData(role) {
+            return task.stubRows.map(r => task.tasksModel.data(task.tasksModel.makeModelIndex(r), role));
+        }
         PlasmaCore.ToolTipArea {
             anchors.fill: parent
-            mainText: task.model.AppName || ""
-            subText: task.stubRows.length === 1 ? "1 minimized window"
-                                                : task.stubRows.length + " minimized windows"
+            mainText: (task.stubRows.length === 1 ? "1 minimized " : task.stubRows.length + " minimized ")
+                      + (task.model.AppName || "") + (task.stubRows.length === 1 ? " window" : " windows")
+            subText: stubMouse.containsMouse
+                     ? stub.stubData(Qt.DisplayRole).map(t => "• " + Labels.cleanTitle(t, task.model.AppName)).join("\n")
+                     : ""
             location: PlasmaCore.Types.Floating
         }
         MouseArea {
             id: stubMouse
             anchors.fill: parent
             hoverEnabled: true
-            onClicked: task.stubRequested(task.stubRows, stub)
+            onContainsMouseChanged: {
+                if (containsMouse) stubHighlightTimer.start();
+                else { stubHighlightTimer.stop(); task.highlightRequested([]); }
+            }
+            onClicked: {
+                stubHighlightTimer.stop();
+                task.highlightRequested([]);
+                task.stubRequested(task.stubRows, stub);
+            }
+        }
+        // Like the other buttons: after a short pause, show where the windows
+        // are (KWin's highlight effect also shows minimized windows).
+        Timer {
+            id: stubHighlightTimer
+            interval: 250
+            onTriggered: task.highlightRequested([].concat(...stub.stubData(TaskManager.AbstractTasksModel.WinIdList).map(l => l || [])))
         }
     }
 }
