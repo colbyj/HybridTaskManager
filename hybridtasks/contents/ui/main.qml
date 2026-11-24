@@ -803,13 +803,67 @@ PlasmoidItem {
             }
 
             add({ separator: true });
-            if (!d(R.IsGroupParent)) {
-                add({ text: d(R.IsMinimized) ? "Restore" : "Minimize", icon: "window-minimize" },
-                    () => tasksModel.requestToggleMinimized(idx));
+            var wins = [];
+            if (d(R.IsGroupParent)) {
+                for (c = 0; c < tasksModel.rowCount(idx); c++) wins.push([row, c]);
+            } else {
+                wins.push([row, -1]);
             }
-            add({ text: d(R.IsGroupParent) ? "Close All" : "Close", icon: "window-close" },
-                () => tasksModel.requestClose(idx));
+            addWindowActions(add, wins);
         }
+        contextMenu.visualParent = visualParent;
+        contextMenu.openRelative();
+    }
+
+    // Minimize / restore / maximize / close for one window or a set of them
+    // ("... All" when there's more than one). wins: [row, child] pairs
+    // (child -1 for a top-level row), turned into model indexes when used.
+    function addWindowActions(add, pairs) {
+        var R = TaskManager.AbstractTasksModel;
+        var wins = pairs.map(p => ({ row: p[0], child: p[1] }));
+        var ix = w => w.child < 0 ? tasksModel.makeModelIndex(w.row) : tasksModel.makeModelIndex(w.row, w.child);
+        var get = (w, r) => tasksModel.data(ix(w), r);
+        var many = wins.length > 1, all = many ? " All" : "";
+        var minimized = wins.filter(w => get(w, R.IsMinimized));
+        var shown = wins.filter(w => !get(w, R.IsMinimized));
+        var allMax = wins.every(w => get(w, R.IsMaximized));
+
+        if (shown.length) {
+            add({ text: "Minimize" + all, icon: "window-minimize" },
+                () => shown.forEach(w => tasksModel.requestToggleMinimized(ix(w))));
+        }
+        if (minimized.length) {
+            add({ text: "Restore" + all, icon: "window-restore" },
+                () => minimized.forEach(w => tasksModel.requestToggleMinimized(ix(w))));
+        }
+        if (allMax) {
+            add({ text: "Unmaximize" + all, icon: "window-restore" },
+                () => wins.forEach(w => tasksModel.requestToggleMaximized(ix(w))));
+        } else {
+            // Maximizing a minimized window should also bring it back.
+            add({ text: "Maximize" + all, icon: "window-maximize" }, () => wins.forEach(w => {
+                if (get(w, R.IsMinimized)) tasksModel.requestToggleMinimized(ix(w));
+                if (!get(w, R.IsMaximized)) tasksModel.requestToggleMaximized(ix(w));
+            }));
+        }
+        add({ separator: true });
+        add({ text: "Close" + all, icon: "window-close" },
+            () => wins.forEach(w => tasksModel.requestClose(ix(w))));
+    }
+
+    // Right-click on a collapsed-minimized button.
+    function openStubMenu(rows, visualParent) {
+        contextMenu.clearMenuItems();
+        subMenus.forEach(m => m.destroy());
+        subMenus = [];
+        var add = function (props, action) {
+            var item = menuItemComponent.createObject(contextMenu, props);
+            if (action) item.clicked.connect(action);
+            contextMenu.addMenuItem(item);
+            return item;
+        };
+        add({ text: appNameOf(rows[0]) + " — " + rows.length + " minimized", section: true });
+        addWindowActions(add, rows.map(r => [r, -1]));
         contextMenu.visualParent = visualParent;
         contextMenu.openRelative();
     }
@@ -843,6 +897,7 @@ PlasmoidItem {
                 overflowHidden: root.overflowRows.indexOf(index) !== -1
                 onActivateRequested: row => root.activateIndex(root.tasks.makeModelIndex(row), true)
                 onStubRequested: (rows, item) => root.openStub(rows, item)
+                onStubMenuRequested: (rows, item) => root.openStubMenu(rows, item)
                 audio: root.audioFor(model.AppPid, model.AppId)
                 badge: root.badgeFor(model.LauncherUrlWithoutIcon, model.AppId)
                 notification: root.notificationsFor(model.LauncherUrlWithoutIcon, model.AppId)

@@ -49,6 +49,7 @@ Item {
     signal activateRequested(int row)
     signal groupMenuRequested(int row, Item item)
     signal stubRequested(var rows, Item item)
+    signal stubMenuRequested(var rows, Item item)
     signal contextMenuRequested(int row, Item item)
     signal highlightRequested(var ids)
     signal newInstanceRequested(int row)
@@ -382,14 +383,16 @@ Item {
             id: stubMouse
             anchors.fill: parent
             hoverEnabled: true
+            acceptedButtons: Qt.LeftButton | Qt.RightButton
             onContainsMouseChanged: {
                 if (containsMouse) stubHighlightTimer.start();
                 else { stubHighlightTimer.stop(); task.highlightRequested([]); }
             }
-            onClicked: {
+            onClicked: (m) => {
                 stubHighlightTimer.stop();
                 task.highlightRequested([]);
-                task.stubRequested(task.stubRows, stub);
+                if (m.button === Qt.RightButton) task.stubMenuRequested(task.stubRows, stub);
+                else task.stubRequested(task.stubRows, stub);
             }
         }
         // Like the other buttons: after a short pause, show where the windows
