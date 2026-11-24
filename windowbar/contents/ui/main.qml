@@ -193,6 +193,46 @@ PlasmoidItem {
         }
     }
 
+    // ---- drag to reorder ------------------------------------------------------
+    // Rules: a window dragged within its app's cluster reorders inside the
+    // cluster; dragged outside it, the whole cluster moves. Drop targets inside
+    // another app's cluster snap to that cluster's edge so clusters never mix.
+    function clusterAt(keys, i) {
+        var s = i, e = i;
+        while (s > 0 && keys[s - 1] === keys[i]) s--;
+        while (e + 1 < keys.length && keys[e + 1] === keys[i]) e++;
+        return [s, e];
+    }
+    function dragMoved(item, x, y) {
+        var p = item.mapToItem(flow, x, y);
+        var target = flow.childAt(p.x, p.y);
+        if (!target || target === item || target.index === undefined) return;
+        var from = item.index, t = target.index;
+
+        // Hysteresis: only move once the cursor is past the target's middle,
+        // so buttons of different widths don't flip back and forth.
+        var local = target.mapFromItem(flow, p.x, p.y);
+        var sameRow = Math.abs(target.y - item.y) < 1;
+        if (sameRow && t > from && local.x < target.width / 2) return;
+        if (sameRow && t < from && local.x > target.width / 2) return;
+
+        var keys = [];
+        for (var r = 0; r < tasksModel.count; r++) keys.push(rowKey(r));
+        var own = clusterAt(keys, from);
+        if (t >= own[0] && t <= own[1]) { tasksModel.move(from, t); return; }
+
+        var other = clusterAt(keys, t);
+        var n = own[1] - own[0] + 1;
+        if (t < own[0]) {
+            for (var i = 0; i < n; i++) tasksModel.move(own[0] + i, other[0] + i);
+        } else {
+            for (i = 0; i < n; i++) tasksModel.move(own[0], other[1]);
+        }
+    }
+    function dragFinished() {
+        tasksModel.syncLaunchers();   // persist pinned-launcher order
+    }
+
     // ---- KWin window highlight ------------------------------------------------
     function highlightWindows(ids) {
         DBus.SessionBus.asyncCall({
@@ -216,32 +256,37 @@ PlasmoidItem {
     }
     property var subMenus: []
 
-    // Text-only list of a grouped app's windows.
-    PlasmaExtras.Menu {
-        id: groupMenu
-        placement: PlasmaExtras.Menu.TopPosedLeftAlignedPopup
+    // Text-only list of a grouped app's windows (GroupList.qml).
+    PlasmaCore.Dialog {
+        id: groupDialog
+        location: Plasmoid.location
+        type: PlasmaCore.Dialog.PopupMenu
+        hideOnWindowDeactivate: true
+        flags: Qt.WindowStaysOnTopHint
+        backgroundHints: PlasmaCore.Dialog.SolidBackground
+        onVisibleChanged: if (!visible) { root.highlightWindows([]); groupList.groupRow = -1; }
+
+        mainItem: GroupList {
+            id: groupList
+            tasksModel: root.tasks
+            onActivated: groupDialog.visible = false
+            onHighlightRequested: ids => root.highlightWindows(ids)
+        }
     }
 
     function openGroupMenu(row, visualParent) {
-        var R = TaskManager.AbstractTasksModel;
-        var parentIdx = tasksModel.makeModelIndex(row);
-        var appName = tasksModel.data(parentIdx, R.AppName);
-        groupMenu.clearMenuItems();
-        var n = tasksModel.rowCount(parentIdx);
-        for (var c = 0; c < n; c++) {
-            const idx = tasksModel.makeModelIndex(row, c);
-            var title = Labels.cleanTitle(tasksModel.data(idx, Qt.DisplayRole), appName);
-            if (tasksModel.data(idx, R.IsMinimized)) title += "  (minimized)";
-            if (tasksModel.data(idx, R.IsActive)) title = "● " + title;
-            var item = menuItemComponent.createObject(groupMenu, {
-                text: title,
-                icon: tasksModel.data(idx, Qt.DecorationRole)
-            });
-            item.clicked.connect(() => tasksModel.requestActivate(idx));
-            groupMenu.addMenuItem(item);
-        }
-        groupMenu.visualParent = visualParent;
-        groupMenu.openRelative();
+        if (groupDialog.visible && groupList.groupRow === row) { groupDialog.visible = false; return; }
+        groupList.appName = tasksModel.data(tasksModel.makeModelIndex(row), TaskManager.AbstractTasksModel.AppName) || "";
+        groupList.groupRow = row;
+        groupList.updateTitleWidth();
+        groupDialog.visualParent = visualParent;
+        groupDialog.visible = true;
+    }
+    // Rows shift when windows open or close elsewhere, so close rather than
+    // show the wrong group.
+    Connections {
+        target: tasksModel
+        function onCountChanged() { groupDialog.visible = false; }
     }
 
     PlasmaExtras.Menu {
@@ -367,6 +412,8 @@ PlasmoidItem {
                 onContextMenuRequested: (row, item) => root.openContextMenu(row, item)
                 onHighlightRequested: ids => root.highlightWindows(ids)
                 onNewInstanceRequested: row => root.newInstance(root.tasks.makeModelIndex(row))
+                onDragMoved: (item, x, y) => root.dragMoved(item, x, y)
+                onDragFinished: root.dragFinished()
             }
         }
     }

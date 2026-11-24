@@ -26,6 +26,11 @@ Item {
     signal contextMenuRequested(int row, Item item)
     signal highlightRequested(var ids)
     signal newInstanceRequested(int row)
+    signal dragMoved(Item item, real x, real y)
+    signal dragFinished()
+
+    property bool dragging: false
+    opacity: dragging ? 0.5 : 1
 
     readonly property bool isLauncher: !!model.IsLauncher
     readonly property bool isGroup: !!model.IsGroupParent
@@ -104,6 +109,7 @@ Item {
 
     PlasmaCore.ToolTipArea {
         anchors.fill: parent
+        active: !task.dragging
         mainText: task.isLauncher ? (task.model.AppName || task.model.display)
                 : task.isGroup ? task.model.AppName
                 : Labels.cleanTitle(task.model.display, task.model.AppName)
@@ -118,13 +124,30 @@ Item {
         anchors.fill: parent
         hoverEnabled: true
         acceptedButtons: Qt.LeftButton | Qt.MiddleButton | Qt.RightButton
+        cursorShape: task.dragging ? Qt.ClosedHandCursor : Qt.ArrowCursor
+
+        property point pressPos
+        onPressed: (m) => { pressPos = Qt.point(m.x, m.y); }
+        onPositionChanged: (m) => {
+            if (!(m.buttons & Qt.LeftButton)) return;
+            if (!task.dragging && Math.hypot(m.x - pressPos.x, m.y - pressPos.y) < Qt.styleHints.startDragDistance) return;
+            if (!task.dragging) { task.dragging = true; highlightTimer.stop(); task.highlightRequested([]); }
+            task.dragMoved(task, m.x, m.y);
+        }
+        onReleased: {
+            if (task.dragging) { task.dragging = false; task.dragFinished(); }
+        }
+        onCanceled: {
+            if (task.dragging) { task.dragging = false; task.dragFinished(); }
+        }
 
         onContainsMouseChanged: {
-            if (containsMouse && !task.isLauncher) highlightTimer.start();
+            if (containsMouse && !task.isLauncher && !task.dragging) highlightTimer.start();
             else { highlightTimer.stop(); task.highlightRequested([]); }
         }
 
         onClicked: (m) => {
+            if (task.dragging) return;
             highlightTimer.stop();
             task.highlightRequested([]);
             if (m.button === Qt.MiddleButton) {
