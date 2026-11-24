@@ -80,3 +80,30 @@ function distinguish(titles) {
         return label || titles[i];
     });
 }
+
+// Make identical labels unique: add the monitor name when that tells them
+// apart ("Downloads · DP-4"), otherwise a number ("Downloads (2)").
+// screens: monitor name per label (same order).
+function disambiguate(labels, screens) {
+    var out = labels.slice();
+    var groups = {};
+    labels.forEach(function (l, i) { (groups[l] = groups[l] || []).push(i); });
+    for (var l in groups) {
+        var g = groups[l];
+        if (g.length < 2) continue;
+        var distinctScreens = {};
+        g.forEach(function (i) { distinctScreens[screens[i]] = (distinctScreens[screens[i]] || 0) + 1; });
+        var n = 0;
+        g.forEach(function (i) {
+            var s = screens[i];
+            if (s && Object.keys(distinctScreens).length > 1 && distinctScreens[s] === 1) {
+                out[i] = l + " · " + s;
+            } else {
+                n++;
+                out[i] = l + " (" + n + ")";
+                if (s && Object.keys(distinctScreens).length > 1) out[i] = l + " · " + s + " (" + n + ")";
+            }
+        });
+    }
+    return out;
+}

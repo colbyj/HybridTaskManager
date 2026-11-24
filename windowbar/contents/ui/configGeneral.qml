@@ -8,6 +8,8 @@ KCM.SimpleKCM {
     property alias cfg_minButtonWidth: minWidth.value
     property alias cfg_maxButtonWidth: maxWidth.value
     property alias cfg_showOnlyCurrentDesktop: currentDesktop.checked
+    property alias cfg_focusFlash: flashCombo.currentIndex
+    property alias cfg_collapseMinimized: collapseCombo.currentIndex
 
     Kirigami.FormLayout {
         QQC2.ComboBox {
@@ -29,6 +31,17 @@ KCM.SimpleKCM {
             from: 40; to: 800; stepSize: 10
             textFromValue: (v) => v + " px"
             valueFromText: (t) => parseInt(t)
+        }
+        QQC2.ComboBox {
+            id: collapseCombo
+            Kirigami.FormData.label: "Collapse minimized windows:"
+            // Index == config value.
+            model: ["Never", "When the bar is full", "Always"]
+        }
+        QQC2.ComboBox {
+            id: flashCombo
+            Kirigami.FormData.label: "Flash window when focused:"
+            model: ["Never", "When it's on another monitor", "Always"]
         }
         QQC2.CheckBox {
             id: currentDesktop

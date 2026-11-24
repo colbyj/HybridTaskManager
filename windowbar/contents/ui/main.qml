@@ -4,6 +4,8 @@ import QtCore
 import org.kde.plasma.plasmoid
 import org.kde.plasma.core as PlasmaCore
 import org.kde.plasma.extras as PlasmaExtras
+import org.kde.plasma.components as PC3
+import org.kde.ksvg as KSvg
 import org.kde.plasma.plasma5support as P5Support
 import org.kde.plasma.workspace.dbus as DBus
 import org.kde.kirigami as Kirigami
@@ -41,21 +43,108 @@ PlasmoidItem {
     readonly property int minLabelWidth: Plasmoid.configuration.minButtonWidth
     readonly property int maxLabelWidth: Math.max(minLabelWidth, Plasmoid.configuration.maxButtonWidth)
 
-    // Sum of button lengths spread over the rows, plus the widest button as
-    // slack because rows can't be packed perfectly.
+    // ---- layout pass ------------------------------------------------------------
+    // Decides, in order, until everything fits:
+    //   1. every button at its natural width
+    //   2. labelled buttons capped at a shared width, as wide as still fits --
+    //      short labels keep their full text, long ones shorten (down to the minimum)
+    //   3. minimized windows collapsed into one stub per app (if enabled)
+    //   4. the rightmost buttons moved into a "+N" list
     property int preferredLength: rowHeight
-    Timer { id: sizeTimer; interval: 50; onTriggered: root.updatePreferredLength() }
-    function updatePreferredLength() {
-        var total = 0, widest = 0;
-        for (var i = 0; i < repeater.count; i++) {
+    property int labelCap: 100000     // max width for labelled buttons
+    property var ownHidden: []      // per row: collapsed into a stub
+    property var stubs: ({})        // row -> [rows collapsed after it]
+    property var overflowRows: []   // rows moved into "+N"
+    readonly property int overflowButtonWidth: Math.round(rowHeight * 1.4)
+
+    Timer { id: layoutTimer; interval: 30; onTriggered: root.computeLayout() }
+    onWidthChanged: layoutTimer.restart()
+    onHeightChanged: layoutTimer.restart()
+    onRowsChanged: layoutTimer.restart()
+
+    function computeLayout() {
+        var R = TaskManager.AbstractTasksModel;
+        var n = repeater.count;
+        var items = [], keys = [];
+        for (var i = 0; i < n; i++) {
             var it = repeater.itemAt(i);
-            if (!it) continue;
-            var len = root.vertical ? it.height : it.width;
-            total += len; widest = Math.max(widest, len);
+            if (!it) { layoutTimer.restart(); return; }   // delegates still being created
+            items.push(it);
+            keys.push(rowKey(i));
         }
-        preferredLength = Math.max(rowHeight, Math.ceil(total / rows) + (rows > 1 ? widest : 0));
+
+        // Minimized windows of ungrouped apps, per cluster -> stub on the cluster's last row.
+        function collapsePlan() {
+            var hidden = [], st = {};
+            for (var i = 0; i < n; i++) hidden.push(false);
+            for (i = 0; i < n; ) {
+                var e = i;
+                while (e + 1 < n && keys[e + 1] === keys[i]) e++;
+                var mins = [];
+                for (var r = i; r <= e; r++) {
+                    var idx = tasksModel.makeModelIndex(r);
+                    if (tasksModel.data(idx, R.IsWindow) && !tasksModel.data(idx, R.IsGroupParent)
+                        && !tasksModel.data(idx, R.IsGroupable) && tasksModel.data(idx, R.IsMinimized)) {
+                        mins.push(r);
+                        hidden[r] = true;
+                    }
+                }
+                if (mins.length) st[e] = mins;
+                i = e + 1;
+            }
+            return { hidden: hidden, stubs: st };
+        }
+        var none = { hidden: items.map(() => false), stubs: {} };
+
+        function widths(plan, cap) {
+            return items.map((it, i) => (plan.hidden[i] ? 0 : Math.max(it.compactWidth, Math.min(it.naturalWidth, cap)))
+                                        + (plan.stubs[i] ? it.stubWidth : 0));
+        }
+        // Largest cap at which the plan fits, or -1 if even the minimum doesn't.
+        function fitCap(plan, capacity) {
+            if (total(widths(plan, 100000)) <= capacity) return 100000;
+            if (total(widths(plan, 0)) > capacity) return -1;
+            var lo = 0, hi = maxLabelWidth;
+            while (hi - lo > 1) {
+                var mid = Math.floor((lo + hi) / 2);
+                if (total(widths(plan, mid)) <= capacity) lo = mid; else hi = mid;
+            }
+            return lo;
+        }
+        function total(ws) { return ws.reduce((a, b) => a + b, 0); }
+
+        var mode = Plasmoid.configuration.collapseMinimized;   // 0 off, 1 when full, 2 always
+        var basePlan = mode === 2 ? collapsePlan() : none;
+
+        // What we ask the panel for: natural widths spread over our rows.
+        var natural = widths(basePlan, 100000);
+        var widest = Math.max(0, ...natural);
+        preferredLength = Math.max(rowHeight, Math.ceil(total(natural) / rows) + (rows > 1 ? widest : 0));
+
+        // What we actually have. Rows can't be packed perfectly, so allow for
+        // one wasted button-width per extra row.
+        var avail = (vertical ? flow.height : flow.width);
+        var capacity = rows * avail - (rows > 1 ? (rows - 1) * widest : 0);
+
+        var plan = basePlan;
+        var cap = fitCap(plan, capacity);
+        if (cap < 0 && mode === 1) { plan = collapsePlan(); cap = fitCap(plan, capacity); }
+        var ws = widths(plan, Math.max(0, cap));
+
+        var overflow = [];
+        if (total(ws) > capacity) {
+            var acc = 0, limit = capacity - overflowButtonWidth;
+            for (i = 0; i < n; i++) {
+                if (overflow.length || acc + ws[i] > limit) overflow.push(i);
+                else acc += ws[i];
+            }
+        }
+
+        labelCap = Math.max(0, cap);
+        ownHidden = plan.hidden;
+        stubs = plan.stubs;
+        overflowRows = overflow;
     }
-    onRowsChanged: sizeTimer.restart()
 
     // ---- the window list ---------------------------------------------------
     TaskManager.VirtualDesktopInfo { id: virtualDesktopInfo }
@@ -85,8 +174,8 @@ PlasmoidItem {
         onGroupingAppIdBlacklistChanged: if (root.loaded) Plasmoid.configuration.groupingAppIdBlacklist = groupingAppIdBlacklist
         onGroupingLauncherUrlBlacklistChanged: if (root.loaded) Plasmoid.configuration.groupingLauncherUrlBlacklist = groupingLauncherUrlBlacklist
 
-        onCountChanged: { labelTimer.restart(); adjacencyTimer.restart(); }
-        onDataChanged: labelTimer.restart()
+        onCountChanged: { labelTimer.restart(); adjacencyTimer.restart(); layoutTimer.restart(); }
+        onDataChanged: { labelTimer.restart(); layoutTimer.restart(); }
     }
 
     // Pick up config changes made from outside (e.g. scripting, other instances).
@@ -133,7 +222,8 @@ PlasmoidItem {
             if (!ids.length) continue;
             (byApp[appId] = byApp[appId] || []).push({
                 id: String(ids[0]),
-                title: Labels.cleanTitle(tasksModel.data(idx, Qt.DisplayRole), tasksModel.data(idx, R.AppName))
+                title: Labels.cleanTitle(tasksModel.data(idx, Qt.DisplayRole), tasksModel.data(idx, R.AppName)),
+                screen: screenName(tasksModel.data(idx, R.ScreenGeometry))
             });
         }
         var out = {};
@@ -141,10 +231,45 @@ PlasmoidItem {
             var wins = byApp[app];
             if (wins.length < 2) continue;
             var ls = Labels.distinguish(wins.map(w => w.title));
+            ls = Labels.disambiguate(ls, wins.map(w => w.screen));
             wins.forEach((w, i) => out[w.id] = ls[i]);
         }
         labels = out;
+        layoutTimer.restart();
     }
+
+    function screenName(rect) {
+        if (!rect) return "";
+        var ss = Qt.application.screens;
+        for (var i = 0; i < ss.length; i++)
+            if (ss[i].virtualX === rect.x && ss[i].virtualY === rect.y) return ss[i].name;
+        return "";
+    }
+
+    // ---- activating windows -----------------------------------------------------
+    // Clicking a window on the bar focuses it (or minimizes it if it's already
+    // focused). On another monitor a focus change is easy to miss, so briefly
+    // highlight the window -- everything else dims for a moment.
+    function activateIndex(idx, toggleIfActive) {
+        var R = TaskManager.AbstractTasksModel;
+        if (toggleIfActive && tasksModel.data(idx, R.IsActive) && !tasksModel.data(idx, R.IsMinimized)) {
+            highlightWindows([]);
+            tasksModel.requestToggleMinimized(idx);
+            return;
+        }
+        tasksModel.requestActivate(idx);
+        var mode = Plasmoid.configuration.focusFlash;   // 0 off, 1 other monitors, 2 always
+        var geo = tasksModel.data(idx, R.ScreenGeometry);
+        var mine = Plasmoid.containment.screenGeometry;
+        var elsewhere = !geo || !mine || geo.x !== mine.x || geo.y !== mine.y;
+        if (mode === 2 || (mode === 1 && elsewhere)) {
+            highlightWindows(tasksModel.data(idx, R.WinIdList) || []);
+            flashTimer.restart();
+        } else {
+            highlightWindows([]);
+        }
+    }
+    Timer { id: flashTimer; interval: 700; onTriggered: root.highlightWindows([]) }
 
     // ---- running helper commands ---------------------------------------------
     readonly property string codeDir: Qt.resolvedUrl("../code/").toString().replace(/^file:\/\//, "")
@@ -307,37 +432,69 @@ PlasmoidItem {
     }
     property var subMenus: []
 
-    // Text-only list of a grouped app's windows (GroupList.qml).
+    // Text list of windows (WindowList.qml): a grouped app's windows, an app's
+    // collapsed minimized windows, or the "+N" overflow.
+    property string listKey: ""
     PlasmaCore.Dialog {
-        id: groupDialog
+        id: listDialog
         location: Plasmoid.location
         type: PlasmaCore.Dialog.PopupMenu
         hideOnWindowDeactivate: true
         flags: Qt.WindowStaysOnTopHint
         backgroundHints: PlasmaCore.Dialog.SolidBackground
-        onVisibleChanged: if (!visible) { root.highlightWindows([]); groupList.groupRow = -1; }
+        onVisibleChanged: if (!visible) { root.highlightWindows([]); root.listKey = ""; }
 
-        mainItem: GroupList {
-            id: groupList
+        mainItem: WindowList {
+            id: windowList
             tasksModel: root.tasks
-            onActivated: groupDialog.visible = false
+            onActivateRequested: idx => { listDialog.visible = false; root.activateIndex(idx, false); }
             onHighlightRequested: ids => root.highlightWindows(ids)
         }
     }
 
-    function openGroupMenu(row, visualParent) {
-        if (groupDialog.visible && groupList.groupRow === row) { groupDialog.visible = false; return; }
-        groupList.appName = tasksModel.data(tasksModel.makeModelIndex(row), TaskManager.AbstractTasksModel.AppName) || "";
-        groupList.groupRow = row;
-        groupList.updateTitleWidth();
-        groupDialog.visualParent = visualParent;
-        groupDialog.visible = true;
+    function openWindowList(key, entries, title, headers, visualParent) {
+        if (listDialog.visible && listKey === key) { listDialog.visible = false; return; }
+        listKey = key;
+        windowList.entries = entries;
+        windowList.title = title;
+        windowList.showHeaders = headers;
+        windowList.updateTitleWidth();
+        listDialog.visualParent = visualParent;
+        listDialog.visible = true;
     }
-    // Rows shift when windows open or close elsewhere, so close rather than
-    // show the wrong group.
+    function appNameOf(row) {
+        return tasksModel.data(tasksModel.makeModelIndex(row), TaskManager.AbstractTasksModel.AppName) || "";
+    }
+    function entriesFor(row) {
+        var idx = tasksModel.makeModelIndex(row), app = appNameOf(row);
+        if (!tasksModel.data(idx, TaskManager.AbstractTasksModel.IsGroupParent)) return [{ row: row, child: -1, app: app }];
+        var out = [];
+        for (var c = 0; c < tasksModel.rowCount(idx); c++) out.push({ row: row, child: c, app: app });
+        return out;
+    }
+
+    function openGroupMenu(row, visualParent) {
+        openWindowList("group:" + row, entriesFor(row), appNameOf(row), false, visualParent);
+    }
+    function openStub(rows, visualParent) {
+        if (rows.length === 1) { activateIndex(tasksModel.makeModelIndex(rows[0]), false); return; }
+        openWindowList("stub:" + rows.join(","), rows.map(r => ({ row: r, child: -1, app: appNameOf(r) })),
+                       appNameOf(rows[0]) + " — minimized", false, visualParent);
+    }
+    function openOverflow(visualParent) {
+        var entries = [];
+        overflowRows.forEach(r => {
+            if (!ownHidden[r]) entries = entries.concat(entriesFor(r));
+            (stubs[r] || []).forEach(m => entries.push({ row: m, child: -1, app: appNameOf(m) }));
+        });
+        openWindowList("overflow", entries, "", true, visualParent);
+    }
+
+    // Rows shift when windows open or close, so close rather than show the
+    // wrong windows.
     Connections {
         target: tasksModel
-        function onCountChanged() { groupDialog.visible = false; }
+        function onCountChanged() { listDialog.visible = false; }
     }
 
     PlasmaExtras.Menu {
@@ -450,8 +607,11 @@ PlasmoidItem {
         Repeater {
             id: repeater
             model: tasksModel
-            onItemAdded: (i, item) => { item.widthChanged.connect(sizeTimer.restart); sizeTimer.restart(); }
-            onItemRemoved: sizeTimer.restart()
+            onItemAdded: (i, item) => {
+                item.naturalWidthChanged.connect(layoutTimer.restart);
+                layoutTimer.restart();
+            }
+            onItemRemoved: layoutTimer.restart()
             delegate: Task {
                 tasksModel: root.tasks
                 rowHeight: root.rowHeight
@@ -460,12 +620,53 @@ PlasmoidItem {
                 maxLabelWidth: root.maxLabelWidth
                 vertical: root.vertical
                 labels: root.labels
+                labelCap: root.labelCap
+                ownHidden: !!root.ownHidden[index]
+                stubRows: root.stubs[index] || []
+                overflowHidden: root.overflowRows.indexOf(index) !== -1
+                onActivateRequested: row => root.activateIndex(root.tasks.makeModelIndex(row), true)
+                onStubRequested: (rows, item) => root.openStub(rows, item)
                 onGroupMenuRequested: (row, item) => root.openGroupMenu(row, item)
                 onContextMenuRequested: (row, item) => root.openContextMenu(row, item)
                 onHighlightRequested: ids => root.highlightWindows(ids)
                 onNewInstanceRequested: row => root.newInstance(root.tasks.makeModelIndex(row))
                 onDragMoved: (item, x, y, pressX) => root.dragMoved(item, x, y, pressX)
                 onDragFinished: root.dragFinished()
+            }
+        }
+
+        // "+N": everything that didn't fit.
+        Item {
+            id: overflowButton
+            visible: root.overflowRows.length > 0
+            width: root.overflowButtonWidth
+            height: root.rowHeight
+            readonly property int hiddenWindows: {
+                var n = 0;
+                root.overflowRows.forEach(r => {
+                    var idx = root.tasks.makeModelIndex(r);
+                    if (!root.ownHidden[r]) n += root.tasks.data(idx, TaskManager.AbstractTasksModel.IsGroupParent)
+                                               ? root.tasks.rowCount(idx) : 1;
+                    n += (root.stubs[r] || []).length;
+                });
+                return n;
+            }
+            KSvg.FrameSvgItem {
+                anchors.fill: parent
+                anchors.margins: 1
+                imagePath: "widgets/tasks"
+                prefix: overflowMouse.containsMouse ? ["hover", "normal"] : ["normal"]
+            }
+            PC3.Label {
+                anchors.centerIn: parent
+                text: "+" + overflowButton.hiddenWindows
+                font.bold: true
+            }
+            MouseArea {
+                id: overflowMouse
+                anchors.fill: parent
+                hoverEnabled: true
+                onClicked: root.openOverflow(overflowButton)
             }
         }
     }
