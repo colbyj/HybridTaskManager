@@ -188,37 +188,14 @@ Item {
 
         // Unseen desktop notifications: bell (+ count). Apps that send their own
         // unread count already show it above, so they don't get a bell too.
-        Rectangle {
+        NotificationBell {
             visible: task.notificationCount > 0 && task.badgeCount === 0
+            count: task.notificationCount
+            size: Math.max(12, Math.round(task.rowHeight * 0.42))
             z: 2
             anchors.right: parent.right
             anchors.top: parent.top
             anchors.margins: 1
-            height: Math.max(12, Math.round(task.rowHeight * 0.42))
-            width: bellRow.implicitWidth + height * 0.4
-            radius: height / 2
-            color: Kirigami.Theme.neutralTextColor
-            Row {
-                id: bellRow
-                anchors.centerIn: parent
-                spacing: 1
-                Kirigami.Icon {
-                    width: parent.parent.height * 0.75
-                    height: width
-                    anchors.verticalCenter: parent.verticalCenter
-                    source: "notifications-symbolic"
-                    color: "white"
-                    isMask: true
-                }
-                PC3.Label {
-                    visible: task.notificationCount > 1
-                    anchors.verticalCenter: parent.verticalCenter
-                    text: task.notificationCount > 99 ? "99+" : task.notificationCount
-                    color: "white"
-                    font.pixelSize: parent.parent.height * 0.72
-                    font.bold: true
-                }
-            }
         }
 
         // Progress (downloads, copies, builds...).
@@ -370,6 +347,15 @@ Item {
             height: task.iconSize
             source: task.model.decoration
             opacity: 0.5
+        }
+        NotificationBell {
+            visible: task.notificationCount > 0 && task.badgeCount === 0
+            count: task.notificationCount
+            size: Math.max(12, Math.round(task.rowHeight * 0.42))
+            z: 2
+            anchors.right: parent.right
+            anchors.top: parent.top
+            anchors.margins: 1
         }
         PC3.Label {
             text: task.stubRows.length
