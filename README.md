@@ -32,6 +32,19 @@ There's nothing to build: it's a QML/JavaScript widget plus small Python helpers
 
 ## Install
 
+**From a release:** download the `.plasmoid` file from the latest
+[release](https://github.com/colbyj/HybridTaskManager/releases), then either
+run
+
+```sh
+kpackagetool6 -t Plasma/Applet -i HybridTaskManager-0.1.plasmoid
+```
+
+or right-click your panel → **Add or Manage Widgets** → **Get New Widgets** →
+**Install Widget From Local File…** and pick the file.
+
+**From source:**
+
 ```sh
 git clone https://github.com/colbyj/HybridTaskManager.git
 cd HybridTaskManager
@@ -51,13 +64,23 @@ existing task manager).
 
 ## Update
 
-From the cloned folder (skip `git pull` if you're testing your own edits):
+**From a release:** download the new `.plasmoid` and run
+`kpackagetool6 -t Plasma/Applet -u <file>.plasmoid`, then restart Plasma as below.
+
+**From source:** from the cloned folder (skip `git pull` if you're testing your own edits):
 
 ```sh
 git pull
 kpackagetool6 -t Plasma/Applet -u hybridtasks
 systemctl --user restart plasma-plasmashell   # widgets already on a panel only reload on restart
 ```
+
+## Making a release
+
+1. Bump `Version` in `hybridtasks/metadata.json`, commit, and tag it (`git tag v0.2`).
+2. Build the package from the tag:
+   `git archive --format=zip -o dist/HybridTaskManager-0.2.plasmoid v0.2:hybridtasks`
+3. Push the tag, create a GitHub release from it, and attach the `.plasmoid`.
 
 ## Uninstall
 
