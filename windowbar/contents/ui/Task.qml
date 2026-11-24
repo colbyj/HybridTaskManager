@@ -25,6 +25,7 @@ Item {
     signal groupMenuRequested(int row, Item item)
     signal contextMenuRequested(int row, Item item)
     signal highlightRequested(var ids)
+    signal newInstanceRequested(int row)
 
     readonly property bool isLauncher: !!model.IsLauncher
     readonly property bool isGroup: !!model.IsGroupParent
@@ -82,7 +83,9 @@ Item {
             text: task.shortLabel
             Layout.fillWidth: true
             Layout.alignment: Qt.AlignVCenter
-            elide: Text.ElideMiddle
+            // Paths are most recognisable by their end ("…/robot/firmware");
+            // other titles by their start.
+            elide: /^\S*\/\S*$/.test(task.shortLabel) ? Text.ElideLeft : Text.ElideRight
             maximumLineCount: 1
             opacity: task.model.IsMinimized ? 0.7 : 1
         }
@@ -125,7 +128,7 @@ Item {
             highlightTimer.stop();
             task.highlightRequested([]);
             if (m.button === Qt.MiddleButton) {
-                task.tasksModel.requestNewInstance(task.modelIndex);
+                task.newInstanceRequested(task.index);
             } else if (m.button === Qt.RightButton) {
                 task.contextMenuRequested(task.index, task);
             } else if (task.isGroup) {
