@@ -1068,6 +1068,9 @@ PlasmoidItem {
                 maxLabelWidth: root.maxLabelWidth
                 vertical: root.vertical
                 hoverList: Plasmoid.configuration.hoverList
+                audioIndicator: Plasmoid.configuration.showAudioIndicator
+                groupIndicator: Plasmoid.configuration.groupIndicator
+                panelLocation: Plasmoid.location
                 labels: root.labels
                 labelCap: root.labelCap
                 ownHidden: !!root.ownHidden[index]

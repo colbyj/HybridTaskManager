@@ -25,6 +25,8 @@ KCM.SimpleKCM {
     property alias cfg_groupedClick: groupedClickCombo.currentIndex
     property alias cfg_highlightOnHover: highlightOnHover.checked
     property alias cfg_hoverList: hoverList.checked
+    property alias cfg_showAudioIndicator: showAudioIndicator.checked
+    property alias cfg_groupIndicator: groupIndicatorCombo.currentIndex
 
     Kirigami.FormLayout {
         QQC2.CheckBox {
@@ -51,6 +53,17 @@ KCM.SimpleKCM {
             from: 40; to: 800; stepSize: 10
             textFromValue: (v) => v + " px"
             valueFromText: (t) => parseInt(t)
+        }
+        QQC2.ComboBox {
+            id: groupIndicatorCombo
+            Kirigami.FormData.label: "Grouped apps are marked with:"
+            // Index == config value.
+            model: ["Nothing", "The number of windows", "An arrow"]
+        }
+        QQC2.CheckBox {
+            id: showAudioIndicator
+            Kirigami.FormData.label: "Indicators:"
+            text: "Show when an app is playing audio (click to mute)"
         }
         QQC2.ComboBox {
             id: groupedClickCombo

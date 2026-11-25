@@ -31,6 +31,9 @@ Item {
     property int maxLabelWidth
     property bool vertical
     property bool hoverList: false      // hovering a group shows its window list instead of a tooltip
+    property bool audioIndicator: true  // show the playing/muted indicator
+    property int groupIndicator: 1      // GroupIndicator.mode
+    property int panelLocation: PlasmaCore.Types.BottomEdge
 
     // Set by main.qml's layout pass.
     property int labelCap: 100000       // shared max width for labelled buttons
@@ -43,7 +46,7 @@ Item {
     property var badge: null            // { count, progress } or null
     property var notification: null     // { count, titles } of unseen notifications, or null
     readonly property int notificationCount: notification ? notification.count : 0
-    readonly property bool showAudio: !!audio && (audio.playing || audio.muted)
+    readonly property bool showAudio: audioIndicator && !!audio && (audio.playing || audio.muted)
     readonly property int badgeCount: badge ? badge.count : 0
     readonly property real progress: badge ? badge.progress : -1
 
@@ -128,8 +131,10 @@ Item {
         RowLayout {
             id: content
             anchors.fill: parent
-            anchors.leftMargin: task.hPad
-            anchors.rightMargin: task.hPad
+            // Icon-only buttons can be narrower than icon + padding; shrink the
+            // padding evenly so the icon stays centred (and so does the group arrow).
+            anchors.leftMargin: task.showLabel ? task.hPad : Math.min(task.hPad, Math.floor((own.width - task.iconSize) / 2))
+            anchors.rightMargin: task.showLabel ? task.hPad : Math.min(task.hPad, Math.ceil((own.width - task.iconSize) / 2))
             spacing: Kirigami.Units.smallSpacing
 
             Kirigami.Icon {
@@ -243,15 +248,13 @@ Item {
             }
         }
 
-        // Window count for grouped apps.
-        PC3.Label {
-            visible: task.isGroup
-            text: task.model.ChildCount || ""
-            anchors.right: parent.right
-            anchors.bottom: parent.bottom
-            anchors.rightMargin: 2
-            font.pixelSize: Math.max(8, task.rowHeight * 0.32)
-            font.bold: true
+        // Grouped apps: window count or arrow.
+        GroupIndicator {
+            mode: task.groupIndicator
+            count: task.isGroup ? (task.model.ChildCount || 0) : 0
+            location: task.panelLocation
+            rowHeight: task.rowHeight
+            iconSize: task.iconSize
         }
 
         PlasmaCore.ToolTipArea {
@@ -368,13 +371,12 @@ Item {
             anchors.top: parent.top
             anchors.margins: 1
         }
-        PC3.Label {
-            text: task.stubRows.length
-            anchors.right: parent.right
-            anchors.bottom: parent.bottom
-            anchors.rightMargin: 2
-            font.pixelSize: Math.max(8, task.rowHeight * 0.32)
-            font.bold: true
+        GroupIndicator {
+            mode: task.groupIndicator
+            count: task.stubRows.length
+            location: task.panelLocation
+            rowHeight: task.rowHeight
+            iconSize: task.iconSize
         }
         // The minimized windows' ids and titles, for hover.
         function stubData(role) {
