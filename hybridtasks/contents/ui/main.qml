@@ -270,7 +270,7 @@ PlasmoidItem {
     function activateIndex(idx, toggleIfActive) {
         var R = TaskManager.AbstractTasksModel;
         if (toggleIfActive && tasksModel.data(idx, R.IsActive) && !tasksModel.data(idx, R.IsMinimized)) {
-            highlightWindows([]);
+            clearHighlight();
             tasksModel.requestToggleMinimized(idx);
             return;
         }
@@ -279,7 +279,7 @@ PlasmoidItem {
         var geo = tasksModel.data(idx, R.ScreenGeometry);
         var mine = Plasmoid.containment.screenGeometry;
         var elsewhere = !geo || !mine || geo.x !== mine.x || geo.y !== mine.y;
-        highlightWindows([]);   // drop the hover highlight
+        clearHighlight();   // drop the hover highlight
         if (mode === 2 || (mode === 1 && elsewhere)) showOutline(tasksModel.data(idx, R.Geometry));
     }
 
@@ -661,6 +661,37 @@ PlasmoidItem {
     }
 
     // ---- KWin window highlight ------------------------------------------------
+    // Hover highlights go through hoverHighlight(). Each request names the item
+    // that was hovered; a "stop" only counts if that item still owns the
+    // highlight. Moving between two rows/buttons can deliver the new item's
+    // "start" before the old one's "stop", which used to wipe the highlight.
+    // Requests are also coalesced, so stop+start doesn't make KWin flicker.
+    property var hlOwner: null
+    property var hlIds: []
+    Timer { id: hlTimer; interval: 30; onTriggered: root.highlightWindows(root.hlIds) }
+    function hoverHighlight(ids, owner) {
+        if (ids.length) {
+            if (!Plasmoid.configuration.highlightOnHover) return;
+            hlOwner = owner;
+            hlIds = ids;
+        } else {
+            if (hlOwner !== owner) return;   // something else has taken over
+            hlOwner = null;
+            hlIds = [];
+        }
+        hlTimer.restart();
+    }
+    function clearHighlight() {
+        hlTimer.stop();
+        hlOwner = null;
+        hlIds = [];
+        highlightWindows([]);
+    }
+    // Drop the highlight if it belongs to a row of a list that is going away.
+    function clearHighlightFrom(container) {
+        for (var it = hlOwner; it; it = it.parent)
+            if (it === container) { clearHighlight(); return; }
+    }
     function highlightWindows(ids) {
         DBus.SessionBus.asyncCall({
             service: "org.kde.KWin.HighlightWindow",
@@ -693,17 +724,63 @@ PlasmoidItem {
         hideOnWindowDeactivate: true
         flags: Qt.WindowStaysOnTopHint
         backgroundHints: PlasmaCore.Dialog.SolidBackground
-        onVisibleChanged: if (!visible) { root.highlightWindows([]); root.listKey = ""; }
+        onVisibleChanged: if (!visible) { root.clearHighlightFrom(windowList); root.listKey = ""; }
 
         mainItem: WindowList {
             id: windowList
             tasksModel: root.tasks
             onActivateRequested: idx => { listDialog.visible = false; root.activateIndex(idx, false); }
-            onHighlightRequested: ids => root.highlightWindows(ids)
+            onHighlightRequested: (ids, owner) => root.hoverHighlight(ids, owner)
         }
     }
 
+    // The same list, shown while hovering a grouped app (or a minimized stub)
+    // when "show a list on hover" is on. It doesn't take focus, and closes
+    // shortly after the pointer has left both the button and the list.
+    property string hoverKey: ""
+    property bool hoverSourceHovered: false
+    PlasmaCore.Dialog {
+        id: hoverDialog
+        location: Plasmoid.location
+        type: PlasmaCore.Dialog.Tooltip
+        hideOnWindowDeactivate: false
+        flags: Qt.WindowStaysOnTopHint | Qt.WindowDoesNotAcceptFocus
+        backgroundHints: PlasmaCore.Dialog.SolidBackground
+        onVisibleChanged: if (!visible) { root.clearHighlightFrom(hoverList); root.hoverKey = ""; }
+
+        mainItem: WindowList {
+            id: hoverList
+            tasksModel: root.tasks
+            onActivateRequested: idx => { hoverDialog.visible = false; root.activateIndex(idx, false); }
+            onHighlightRequested: (ids, owner) => root.hoverHighlight(ids, owner)
+            onHoveredChanged: if (!hovered) hoverCloseTimer.restart()
+        }
+    }
+    Timer {
+        id: hoverCloseTimer
+        interval: 350
+        onTriggered: if (!root.hoverSourceHovered && !hoverList.hovered) hoverDialog.visible = false
+    }
+    function openHoverList(key, entries, title, visualParent) {
+        hoverSourceHovered = true;
+        hoverCloseTimer.stop();
+        if (!Plasmoid.configuration.hoverList || listDialog.visible) return;
+        if (hoverDialog.visible && hoverKey === key) return;
+        hoverKey = key;
+        hoverList.entries = entries;
+        hoverList.title = title;
+        hoverList.showHeaders = false;
+        hoverList.updateTitleWidth();
+        hoverDialog.visualParent = visualParent;
+        hoverDialog.visible = true;
+    }
+    function hoverEnded() {
+        hoverSourceHovered = false;
+        if (hoverDialog.visible) hoverCloseTimer.restart();
+    }
+
     function openWindowList(key, entries, title, headers, visualParent) {
+        hoverDialog.visible = false;
         if (listDialog.visible && listKey === key) { listDialog.visible = false; return; }
         listKey = key;
         windowList.entries = entries;
@@ -727,6 +804,29 @@ PlasmoidItem {
     function openGroupMenu(row, visualParent) {
         openWindowList("group:" + row, entriesFor(row), appNameOf(row), false, visualParent);
     }
+    // Left-click on a grouped app: its window list, or the next of its windows.
+    function groupClicked(row, visualParent) {
+        if (Plasmoid.configuration.groupedClick === 1) cycleGroup(row);
+        else openGroupMenu(row, visualParent);
+    }
+    // Activates the window after the focused one; if none of the app's windows
+    // has focus, the one used most recently.
+    function cycleGroup(row) {
+        var R = TaskManager.AbstractTasksModel;
+        var n = tasksModel.rowCount(tasksModel.makeModelIndex(row));
+        if (!n) return;
+        var active = -1, recent = 0, recentAt = -1;
+        for (var c = 0; c < n; c++) {
+            var idx = tasksModel.makeModelIndex(row, c);
+            if (tasksModel.data(idx, R.IsActive)) active = c;
+            var t = new Date(tasksModel.data(idx, R.LastActivated) || 0).getTime() || 0;
+            if (t > recentAt) { recentAt = t; recent = c; }
+        }
+        var next = active >= 0 ? (active + 1) % n : recent;
+        // A single focused window minimizes, like an ungrouped button.
+        activateIndex(tasksModel.makeModelIndex(row, next), n === 1);
+    }
+
     function openStub(rows, visualParent) {
         if (rows.length === 1) { activateIndex(tasksModel.makeModelIndex(rows[0]), false); return; }
         openWindowList("stub:" + rows.join(","), rows.map(r => ({ row: r, child: -1, app: appNameOf(r) })),
@@ -745,7 +845,7 @@ PlasmoidItem {
     // wrong windows.
     Connections {
         target: tasksModel
-        function onCountChanged() { listDialog.visible = false; }
+        function onCountChanged() { listDialog.visible = false; hoverDialog.visible = false; }
     }
 
     PlasmaExtras.Menu {
@@ -881,6 +981,13 @@ PlasmoidItem {
         var shown = wins.filter(w => !get(w, R.IsMinimized));
         var allMax = wins.every(w => get(w, R.IsMaximized));
 
+        if (many) {
+            // Raise every window; the focused one last so it keeps focus.
+            add({ text: "Show All", icon: "window" }, () => {
+                var active = wins.filter(w => get(w, R.IsActive));
+                wins.filter(w => !get(w, R.IsActive)).concat(active).forEach(w => tasksModel.requestActivate(ix(w)));
+            });
+        }
         if (shown.length) {
             add({ text: "Minimize" + all, icon: "window-minimize" },
                 () => shown.forEach(w => tasksModel.requestToggleMinimized(ix(w))));
@@ -943,6 +1050,7 @@ PlasmoidItem {
                 minLabelWidth: root.minLabelWidth
                 maxLabelWidth: root.maxLabelWidth
                 vertical: root.vertical
+                hoverList: Plasmoid.configuration.hoverList
                 labels: root.labels
                 labelCap: root.labelCap
                 ownHidden: !!root.ownHidden[index]
@@ -956,8 +1064,13 @@ PlasmoidItem {
                 notification: root.notificationsFor(model.LauncherUrlWithoutIcon, model.AppId)
                 onMuteToggled: root.toggleMute(model.AppPid, model.AppId)
                 onGroupMenuRequested: (row, item) => root.openGroupMenu(row, item)
+                onGroupClicked: (row, item) => root.groupClicked(row, item)
+                onHoverListRequested: (row, item) => root.openHoverList("group:" + row, root.entriesFor(row), root.appNameOf(row), item)
+                onStubHoverRequested: (rows, item) => root.openHoverList("stub:" + rows.join(","),
+                    rows.map(r => ({ row: r, child: -1, app: root.appNameOf(r) })), root.appNameOf(rows[0]) + " — minimized", item)
+                onHoverEnded: root.hoverEnded()
                 onContextMenuRequested: (row, item) => root.openContextMenu(row, item)
-                onHighlightRequested: ids => root.highlightWindows(ids)
+                onHighlightRequested: (ids, owner) => root.hoverHighlight(ids, owner)
                 onNewInstanceRequested: row => root.newInstance(root.tasks.makeModelIndex(row))
                 onDragMoved: (item, x, y, pressX) => root.dragMoved(item, x, y, pressX)
                 onDragFinished: root.dragFinished()

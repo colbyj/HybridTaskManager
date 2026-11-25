@@ -22,6 +22,9 @@ KCM.SimpleKCM {
     property alias cfg_outlineUseAccent: outlineAccent.checked
     property alias cfg_outlineColor: outlineColor.color
     property alias cfg_outlineDuration: outlineDuration.value
+    property alias cfg_groupedClick: groupedClickCombo.currentIndex
+    property alias cfg_highlightOnHover: highlightOnHover.checked
+    property alias cfg_hoverList: hoverList.checked
 
     Kirigami.FormLayout {
         QQC2.CheckBox {
@@ -48,6 +51,21 @@ KCM.SimpleKCM {
             from: 40; to: 800; stepSize: 10
             textFromValue: (v) => v + " px"
             valueFromText: (t) => parseInt(t)
+        }
+        QQC2.ComboBox {
+            id: groupedClickCombo
+            Kirigami.FormData.label: "Clicking a grouped app:"
+            // Index == config value.
+            model: ["Shows a list of its windows", "Cycles through its windows"]
+        }
+        QQC2.CheckBox {
+            id: highlightOnHover
+            Kirigami.FormData.label: "Hovering a button:"
+            text: "Highlights its windows (dims all others)"
+        }
+        QQC2.CheckBox {
+            id: hoverList
+            text: "Shows a list of a grouped app's windows"
         }
         QQC2.ComboBox {
             id: collapseCombo

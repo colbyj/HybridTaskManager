@@ -26,7 +26,12 @@ Item {
     property string title: ""
 
     signal activateRequested(var modelIndex)
-    signal highlightRequested(var ids)
+    // ids empty = stop highlighting. owner: the hovered row.
+    signal highlightRequested(var ids, Item owner)
+
+    // Whether the pointer is anywhere over the list.
+    readonly property alias hovered: listHover.hovered
+    HoverHandler { id: listHover }
 
     // Bumped whenever the model's data changes, so row state stays live.
     property int revision: 0
@@ -51,6 +56,24 @@ Item {
         return Labels.cleanTitle(tasksModel.data(indexOf(e), Qt.DisplayRole), e.app);
     }
 
+    // Raise every window (restoring minimized ones). The focused one, if any,
+    // goes last so it keeps focus.
+    function showAll() {
+        var R = TaskManager.AbstractTasksModel, last = null;
+        entries.forEach(e => {
+            var idx = indexOf(e);
+            if (tasksModel.data(idx, R.IsActive)) last = e;
+            else tasksModel.requestActivate(idx);
+        });
+        if (last) tasksModel.requestActivate(indexOf(last));
+    }
+    function minimizeAll() {
+        entries.forEach(e => {
+            var idx = indexOf(e);
+            if (!tasksModel.data(idx, TaskManager.AbstractTasksModel.IsMinimized)) tasksModel.requestToggleMinimized(idx);
+        });
+    }
+
     FontMetrics { id: boldMetrics; font.bold: true }
 
     // Size to the longest title (bold, since the active one is bold).
@@ -65,13 +88,45 @@ Item {
         width: parent.width
         spacing: 0
 
-        PC3.Label {
-            visible: !list.showHeaders && list.title !== ""
-            text: list.title
-            opacity: 0.7
-            font: Kirigami.Theme.smallFont
+        // Title, plus "show all" / "minimize all" when there's more than one window.
+        RowLayout {
+            visible: title.visible || list.entries.length > 1
+            Layout.fillWidth: true
             Layout.leftMargin: Kirigami.Units.largeSpacing
+            Layout.rightMargin: Kirigami.Units.smallSpacing
             Layout.bottomMargin: Kirigami.Units.smallSpacing
+            spacing: 0
+
+            PC3.Label {
+                id: title
+                visible: !list.showHeaders && list.title !== ""
+                text: list.title
+                opacity: 0.7
+                font: Kirigami.Theme.smallFont
+                Layout.fillWidth: true
+                elide: Text.ElideRight
+            }
+            Item { visible: !title.visible; Layout.fillWidth: true }
+
+            Repeater {
+                // [icon, label, action]
+                model: list.entries.length > 1 ? [
+                    ["window", "Show All", () => list.showAll()],
+                    ["window-minimize", "Minimize All", () => list.minimizeAll()]
+                ] : []
+                delegate: PC3.ToolButton {
+                    required property var modelData
+                    icon.name: modelData[0]
+                    display: PC3.AbstractButton.IconOnly
+                    text: modelData[1]
+                    PC3.ToolTip.text: modelData[1]
+                    PC3.ToolTip.visible: hovered
+                    PC3.ToolTip.delay: Kirigami.Units.toolTipDelay
+                    Layout.preferredWidth: list.rowHeight
+                    Layout.preferredHeight: list.rowHeight
+                    onClicked: modelData[2]()
+                }
+            }
         }
 
         Repeater {
@@ -113,7 +168,7 @@ Item {
 
                     HoverHandler {
                         id: rowHover
-                        onHoveredChanged: list.highlightRequested(hovered ? (row.get(row.roles.WinIdList) || []) : [])
+                        onHoveredChanged: list.highlightRequested(hovered ? (row.get(row.roles.WinIdList) || []) : [], row)
                     }
                     TapHandler {
                         onTapped: list.activateRequested(row.modelIndex())

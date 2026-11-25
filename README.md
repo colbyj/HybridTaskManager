@@ -12,7 +12,8 @@ apart** (e.g. `shop/api` rather than `user@host: ~/src/shop/api — Konsole`).
 Other features:
 
 - Clicking a grouped app opens a text list of its windows, with minimize,
-  maximize and close buttons on each
+  maximize and close buttons on each (or cycles through its windows); the list
+  can also open on hover, highlighting each window as you point at it
 - An app's windows stay next to each other; drag to reorder them or the whole app
 - When the bar is full, labels shrink, minimized windows can collapse into one
   button, and anything left over goes into a "+N" list

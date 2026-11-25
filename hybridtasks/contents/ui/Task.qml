@@ -30,6 +30,7 @@ Item {
     property int minLabelWidth
     property int maxLabelWidth
     property bool vertical
+    property bool hoverList: false      // hovering a group shows its window list instead of a tooltip
 
     // Set by main.qml's layout pass.
     property int labelCap: 100000       // shared max width for labelled buttons
@@ -48,10 +49,15 @@ Item {
 
     signal activateRequested(int row)
     signal groupMenuRequested(int row, Item item)
+    signal groupClicked(int row, Item item)
+    signal hoverListRequested(int row, Item item)
+    signal stubHoverRequested(var rows, Item item)
+    signal hoverEnded()
     signal stubRequested(var rows, Item item)
     signal stubMenuRequested(var rows, Item item)
     signal contextMenuRequested(int row, Item item)
-    signal highlightRequested(var ids)
+    // ids empty = stop highlighting. owner: the hovered part (button or stub).
+    signal highlightRequested(var ids, Item owner)
     signal newInstanceRequested(int row)
     signal dragMoved(Item item, real x, real y, real pressX)
     signal dragFinished()
@@ -250,7 +256,8 @@ Item {
 
         PlasmaCore.ToolTipArea {
             anchors.fill: parent
-            active: !task.dragging
+            // A group's hover list replaces its tooltip.
+            active: !task.dragging && !(task.isGroup && task.hoverList)
             mainText: task.isLauncher ? (task.model.AppName || task.model.display)
                     : task.isGroup ? task.model.AppName
                     : Labels.cleanTitle(task.model.display, task.model.AppName)
@@ -276,7 +283,7 @@ Item {
             onPositionChanged: (m) => {
                 if (!(m.buttons & Qt.LeftButton)) return;
                 if (!task.dragging && Math.hypot(m.x - pressPos.x, m.y - pressPos.y) < Qt.styleHints.startDragDistance) return;
-                if (!task.dragging) { task.dragging = true; highlightTimer.stop(); task.highlightRequested([]); }
+                if (!task.dragging) { task.dragging = true; highlightTimer.stop(); task.highlightRequested([], own); task.hoverEnded(); }
                 task.dragMoved(task, m.x, m.y, pressPos.x);
             }
             onReleased: {
@@ -288,20 +295,20 @@ Item {
 
             onContainsMouseChanged: {
                 if (containsMouse && !task.isLauncher && !task.dragging) highlightTimer.start();
-                else { highlightTimer.stop(); task.highlightRequested([]); }
+                else { highlightTimer.stop(); task.highlightRequested([], own); task.hoverEnded(); }
             }
 
             onClicked: (m) => {
                 if (task.dragging) return;
                 highlightTimer.stop();
                 if (m.button === Qt.MiddleButton) {
-                    task.highlightRequested([]);
+                    task.highlightRequested([], own);
                     task.newInstanceRequested(task.index);
                 } else if (m.button === Qt.RightButton) {
-                    task.highlightRequested([]);
+                    task.highlightRequested([], own);
                     task.contextMenuRequested(task.index, own);
                 } else if (task.isGroup) {
-                    task.groupMenuRequested(task.index, own);
+                    task.groupClicked(task.index, own);
                 } else {
                     // main.qml decides between activate and minimize, and
                     // whether to flash the window.
@@ -325,7 +332,8 @@ Item {
                         ids = ids.concat(cids);
                     }
                 }
-                task.highlightRequested(ids);
+                task.highlightRequested(ids, own);
+                if (task.isGroup) task.hoverListRequested(task.index, own);
             }
         }
     }
@@ -374,6 +382,7 @@ Item {
         }
         PlasmaCore.ToolTipArea {
             anchors.fill: parent
+            active: !(task.hoverList && task.stubRows.length > 1)
             mainText: (task.stubRows.length === 1 ? "1 minimized " : task.stubRows.length + " minimized ")
                       + (task.model.AppName || "") + (task.stubRows.length === 1 ? " window" : " windows")
             subText: stubMouse.containsMouse
@@ -388,11 +397,11 @@ Item {
             acceptedButtons: Qt.LeftButton | Qt.RightButton
             onContainsMouseChanged: {
                 if (containsMouse) stubHighlightTimer.start();
-                else { stubHighlightTimer.stop(); task.highlightRequested([]); }
+                else { stubHighlightTimer.stop(); task.highlightRequested([], stub); task.hoverEnded(); }
             }
             onClicked: (m) => {
                 stubHighlightTimer.stop();
-                task.highlightRequested([]);
+                task.highlightRequested([], stub);
                 if (m.button === Qt.RightButton) task.stubMenuRequested(task.stubRows, stub);
                 else task.stubRequested(task.stubRows, stub);
             }
@@ -402,7 +411,10 @@ Item {
         Timer {
             id: stubHighlightTimer
             interval: 250
-            onTriggered: task.highlightRequested([].concat(...stub.stubData(TaskManager.AbstractTasksModel.WinIdList).map(l => l || [])))
+            onTriggered: {
+                task.highlightRequested([].concat(...stub.stubData(TaskManager.AbstractTasksModel.WinIdList).map(l => l || [])), stub);
+                if (task.stubRows.length > 1) task.stubHoverRequested(task.stubRows, stub);
+            }
         }
     }
 }
