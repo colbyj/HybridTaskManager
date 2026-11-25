@@ -100,8 +100,10 @@ Item {
                     Layout.fillWidth: true
                     Layout.preferredHeight: list.rowHeight
 
-                    readonly property var modelIndex: list.indexOf(entry.modelData)
-                    function get(role) { list.revision; return list.tasksModel.data(modelIndex, role); }
+                    // Built fresh on each use: a stored QModelIndex dangles once the proxy
+                    // model regroups/re-sorts, and data() on it segfaults plasmashell.
+                    function modelIndex() { return list.indexOf(entry.modelData); }
+                    function get(role) { list.revision; return list.tasksModel.data(modelIndex(), role); }
                     readonly property var roles: TaskManager.AbstractTasksModel
                     readonly property bool active: !!get(roles.IsActive)
                     readonly property bool minimized: !!get(roles.IsMinimized)
@@ -114,7 +116,7 @@ Item {
                         onHoveredChanged: list.highlightRequested(hovered ? (row.get(row.roles.WinIdList) || []) : [])
                     }
                     TapHandler {
-                        onTapped: list.activateRequested(row.modelIndex)
+                        onTapped: list.activateRequested(row.modelIndex())
                     }
 
                     Rectangle {
@@ -155,12 +157,12 @@ Item {
                             model: [
                                 [row.minimized ? "window-restore" : "window-minimize",
                                  row.minimized ? "Restore" : "Minimize",
-                                 () => list.tasksModel.requestToggleMinimized(row.modelIndex)],
+                                 () => list.tasksModel.requestToggleMinimized(row.modelIndex())],
                                 [row.maximized ? "window-restore" : "window-maximize",
                                  row.maximized ? "Restore Size" : "Maximize",
-                                 () => list.tasksModel.requestToggleMaximized(row.modelIndex)],
+                                 () => list.tasksModel.requestToggleMaximized(row.modelIndex())],
                                 ["window-close", "Close",
-                                 () => list.tasksModel.requestClose(row.modelIndex)]
+                                 () => list.tasksModel.requestClose(row.modelIndex())]
                             ]
                             delegate: PC3.ToolButton {
                                 required property var modelData

@@ -64,7 +64,9 @@ Item {
     readonly property var winIds: model.WinIdList || []
     readonly property string shortLabel: !isGroup && winIds.length ? (labels[String(winIds[0])] || "") : ""
     readonly property bool showLabel: shortLabel !== "" && !vertical
-    readonly property var modelIndex: tasksModel.makeModelIndex(index)
+    // A function, not a property: a stored QModelIndex dangles after the proxy
+    // model regroups/re-sorts, and using it can segfault plasmashell.
+    function modelIndex() { return tasksModel.makeModelIndex(index); }
 
     // Widths main.qml uses to plan the layout. They don't depend on the layout
     // state, so planning can't feed back into itself.
@@ -222,7 +224,7 @@ Item {
             onDropped: (drop) => {
                 dragRaiseTimer.stop();
                 if (!drop.hasUrls) return;
-                task.tasksModel.requestOpenUrls(task.modelIndex, drop.urls);
+                task.tasksModel.requestOpenUrls(task.modelIndex(), drop.urls);
                 drop.accept();
             }
             Timer {
@@ -230,7 +232,7 @@ Item {
                 interval: 600
                 onTriggered: {
                     if (task.isGroup) task.groupMenuRequested(task.index, own);
-                    else if (!task.isLauncher) task.tasksModel.requestActivate(task.modelIndex);
+                    else if (!task.isLauncher) task.tasksModel.requestActivate(task.modelIndex());
                 }
             }
         }
@@ -316,7 +318,7 @@ Item {
                 var ids = task.winIds;
                 if (task.isGroup) {
                     ids = [];
-                    var n = task.tasksModel.rowCount(task.modelIndex);
+                    var n = task.tasksModel.rowCount(task.modelIndex());
                     for (var c = 0; c < n; c++) {
                         var cids = task.tasksModel.data(task.tasksModel.makeModelIndex(task.index, c),
                                                         TaskManager.AbstractTasksModel.WinIdList) || [];
