@@ -955,6 +955,23 @@ PlasmoidItem {
                 });
             }
 
+            // Less common window actions (single windows only).
+            if (!d(R.IsGroupParent)) {
+                var moreMenu = addSubMenu({ text: "More", icon: "view-more-symbolic" });
+                if (d(R.IsMovable))
+                    addTo(moreMenu, { text: "Move", icon: "transform-move" }, () => tasksModel.requestMove(idx));
+                if (d(R.IsResizable))
+                    addTo(moreMenu, { text: "Resize", icon: "transform-scale" }, () => tasksModel.requestResize(idx));
+                addTo(moreMenu, { separator: true });
+                addTo(moreMenu, { text: "Keep Above Others", icon: "window-keep-above", checkable: true, checked: !!d(R.IsKeepAbove) },
+                      () => tasksModel.requestToggleKeepAbove(idx));
+                addTo(moreMenu, { text: "Keep Below Others", icon: "window-keep-below", checkable: true, checked: !!d(R.IsKeepBelow) },
+                      () => tasksModel.requestToggleKeepBelow(idx));
+                if (d(R.IsFullScreenable))
+                    addTo(moreMenu, { text: "Fullscreen", icon: "view-fullscreen", checkable: true, checked: !!d(R.IsFullScreen) },
+                          () => tasksModel.requestToggleFullScreen(idx));
+            }
+
             add({ separator: true });
             var wins = [];
             if (d(R.IsGroupParent)) {
