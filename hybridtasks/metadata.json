@@ -6,7 +6,7 @@
         "Description": "Grouped icons for most apps, one labelled button per window for the apps you choose not to group",
         "Icon": "preferences-system-windows",
         "Category": "Windows and Tasks",
-        "Version": "0.1",
+        "Version": "0.2",
         "License": "GPL-2.0-or-later",
         "Website": "https://github.com/colbyj/HybridTaskManager",
         "BugReportUrl": "https://github.com/colbyj/HybridTaskManager/issues",

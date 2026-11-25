@@ -40,7 +40,7 @@ There's nothing to build: it's a QML/JavaScript widget plus small Python helpers
 run
 
 ```sh
-kpackagetool6 -t Plasma/Applet -i HybridTaskManager-0.1.plasmoid
+kpackagetool6 -t Plasma/Applet -i HybridTaskManager-0.2.plasmoid
 ```
 
 or right-click your panel → **Add or Manage Widgets** → **Get New Widgets** →
